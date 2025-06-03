@@ -29,6 +29,10 @@ jobs:
 
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Download artifacts
         uses: actions/download-artifact@v4
 
@@ -41,7 +45,7 @@ jobs:
 
       - name: Package Artifacts Nicely
         run: VERSION=${{ env.APP_VERSION }} .ci/pack.sh
-        
+
       - name: Del Previous Release
         run: |
           gh release delete "${APP_VERSION}" --repo "${GITHUB_REPOSITORY}" --cleanup-tag  -y
