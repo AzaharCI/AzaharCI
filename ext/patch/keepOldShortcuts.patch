@@ -1,0 +1,25 @@
+diff --git a/src/installer/citra.nsi b/src/installer/citra.nsi
+index ced1872793..07b7230d25 100644
+--- a/src/installer/citra.nsi
++++ b/src/installer/citra.nsi
+@@ -160,9 +160,6 @@ Section "Base"
+   !insertmacro UPDATE_DISPLAYNAME
+ 
+   ; Create start menu and desktop shortcuts
+-  Delete "$SMPROGRAMS\${PRODUCT_NAME}\$DisplayName.lnk"
+-  Delete "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall $DisplayName.lnk"
+-  RMDir "$SMPROGRAMS\${PRODUCT_NAME}"
+   CreateShortCut "$SMPROGRAMS\$DisplayName.lnk" "$INSTDIR\azahar.exe"
+   ${If} $DesktopShortcut == 1
+     CreateShortCut "$DESKTOP\$DisplayName.lnk" "$INSTDIR\azahar.exe"
+@@ -199,10 +196,6 @@ Section Uninstall
+   Delete "$DESKTOP\$DisplayName.lnk"
+   Delete "$SMPROGRAMS\$DisplayName.lnk"
+ 
+-  Delete "$SMPROGRAMS\${PRODUCT_NAME}\$DisplayName.lnk"
+-  Delete "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall $DisplayName.lnk"
+-  RMDir "$SMPROGRAMS\${PRODUCT_NAME}"
+-
+   ; Be a bit careful to not delete files a user may have put into the install directory.
+   Delete "$INSTDIR\*.dll"
+   Delete "$INSTDIR\azahar.exe"

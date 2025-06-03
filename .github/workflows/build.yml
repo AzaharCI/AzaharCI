@@ -1,0 +1,200 @@
+name: Azahar Build
+
+on:
+  workflow_call:
+    inputs:
+      nightly:
+        description: Whether or not this is a nightly build.
+        type: string
+        default: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        target: ["msvc", "msys2"]
+    defaults:
+      run:
+        shell: ${{ (matrix.target == 'msys2' && 'msys2') || 'bash' }} {0}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: AzaharCI-${{ runner.os }}-${{ matrix.target }}
+
+      - name: Set up MSVC
+        if: ${{ matrix.target == 'msvc' }}
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install extra tools (MSVC)
+        if: ${{ matrix.target == 'msvc' }}
+        run: choco install ccache ninja ptime wget
+
+      - name: Install vulkan-sdk (MSVC)
+        if: ${{ matrix.target == 'msvc' }}
+        run: |
+          wget https://sdk.lunarg.com/sdk/download/1.4.304.1/windows/vulkansdk-windows-X64-1.4.304.1.exe -O D:/a/_temp/vulkan.exe
+          D:/a/_temp/vulkan.exe --accept-licenses --default-answer --confirm-command install
+
+      - name: Set up MSYS2
+        if: ${{ matrix.target == 'msys2' }}
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: clang64
+          update: true
+          install: git make p7zip
+          pacboy: >-
+            toolchain:p ccache:p cmake:p ninja:p spirv-tools:p
+            qt6-base:p qt6-multimedia:p qt6-multimedia-wmf:p qt6-tools:p qt6-translations:p
+
+      - name: Install extra tools (MSYS2)
+        if: ${{ matrix.target == 'msys2' }}
+        uses: crazy-max/ghaction-chocolatey@v3
+        with:
+          args: install ptime wget
+
+      - name: Install NSIS
+        if: ${{ inputs.nightly }} == false
+        shell: pwsh
+        run: |
+          wget https://download.sourceforge.net/project/nsis/NSIS%203/3.11/nsis-3.11-setup.exe -O D:/a/_temp/nsis-setup.exe
+          ptime D:/a/_temp/nsis-setup.exe /S
+
+      - name: Disable line ending translation
+        run: git config --global core.autocrlf input
+
+      - name: Clone & Grab Version
+        run: DEVEL=${{ inputs.nightly }} ./.ci/clone.sh
+
+      - name: Build
+        run: DEVEL=${{ inputs.nightly }} ./windows.sh
+
+      - name: Generate installer
+        if: ${{ inputs.nightly }} == false
+        shell: cmd
+        run: |
+          cd azahar\src\installer
+          "C:\Program Files (x86)\NSIS\makensis.exe" /DPRODUCT_VARIANT=${{ matrix.target }} /DPRODUCT_VERSION=${{ env.VERSION }} citra.nsi
+          mkdir ..\..\artifacts 2> NUL
+          move /y *.exe ..\..\artifacts\
+
+      - name: Upload (Portable)
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.target }}-portable
+          path: azahar/build/bundle/
+
+      - name: Upload (Installer)
+        if: ${{ inputs.nightly }} == false
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.target }}-installer
+          path: azahar/artifacts
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Clone & Grab Version
+        run: DEVEL=${{ inputs.nightly }} ./.ci/clone.sh
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: AzaharCI-Android
+
+      - name: Deps
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install ccache apksigner -y
+
+      - name: Build
+        run: JAVA_HOME=$JAVA_HOME_17_X64 DEVEL=${{ inputs.nightly }} ./android.sh
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+          
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: artifacts
+
+  appimage:
+    name: "${{ matrix.name }} (${{ matrix.arch }})"
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs-on: ubuntu-latest
+            optimized: false
+            name: "Azahar AppImage"
+            arch: x86_64
+
+          - runs-on: ubuntu-latest
+            optimized: true
+            name: "Azahar AppImage (Optimized)"
+            arch: x86_64-v3
+
+          # - runs-on: ubuntu-24.04-arm
+          #   optimized: false
+          #   name: "Azahar AppImage"
+          #   arch: aarch64
+
+    container: ghcr.io/pkgforge-dev/archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          chmod +x ./get-dependencies.sh
+          ./get-dependencies.sh
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: AzaharCI-${{ runner.os }}-${{ matrix.arch }}
+
+      - name: Clone & Grab Version
+        run: DEVEL=${{ inputs.nightly }} ./.ci/clone.sh
+
+      - name: Compile Azahar (Normal)
+        if: ${{ matrix.optimized == false }}
+        run: |
+          DEVEL=${{ inputs.nightly }} ./linux.sh
+          mkdir -p dist
+          mv azahar/*.AppImage* dist/
+
+      - name: Compile Azahar (Optimized)
+        if: ${{ matrix.optimized == true }}
+        run: |
+          DEVEL=${{ inputs.nightly }} ./linux.sh v3
+          mkdir -p dist
+          mv azahar/*.AppImage* dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: linux-${{ matrix.optimized && 'optimized' || 'normal' }}-${{ matrix.arch }}
+          path: "dist"
+
+      - name: Upload version file
+        if: ${{ inputs.nightly }} == true
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: version
+          path: ~/version
+          overwrite: true

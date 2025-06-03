@@ -1,0 +1,13 @@
+diff --git a/src/android/app/build.gradle.kts b/src/android/app/build.gradle.kts
+index 4efa27b57..ec31c42e0 100644
+--- a/src/android/app/build.gradle.kts
++++ b/src/android/app/build.gradle.kts
+@@ -20,7 +20,7 @@ plugins {
+  * next 680 years.
+  */
+ val autoVersion = (((System.currentTimeMillis() / 1000) - 1451606400) / 10).toInt()
+-val abiFilter = listOf("arm64-v8a", "x86_64")
++val abiFilter = listOf("arm64-v8a")
+ 
+ val downloadedJniLibsPath = "${buildDir}/downloadedJniLibs"
+ 

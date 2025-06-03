@@ -1,0 +1,20 @@
+    <string name="system_type">System Type</string>
+    <string name="download">Download</string>
+    <string name="keys_missing">Azahar is missing keys to download system files.</string>
+    <string name="how_to_get_keys"><![CDATA[<a href="https://web.archive.org/web/20240304203412/https://citra-emu.org/wiki/aes-keys/">How to get keys?</a>]]></string>
+    <string name="system_type_minimal">Minimal</string>
+    <string name="system_type_old_3ds">Old 3DS</string>
+    <string name="system_type_new_3ds">New 3DS</string>
+    <string name="downloading_files">Downloading Files…</string>
+    <string name="downloading_files_description">Please do not close the app.</string>
+    <string name="download_failed">Download Failed</string>
+    <string name="download_failed_description">Please make sure you are connected to the internet and try again.</string>
+    <string name="download_success">Download Complete!</string>
+    <string name="download_cancelled">Download Cancelled</string>
+    <string name="download_cancelled_description">Please restart the download to prevent issues with having incomplete system files.</string>
+    <string name="home_menu_warning">System Files Warning</string>
+    <string name="home_menu_warning_description">Due to how slow Android\'s storage access framework is for accessing Azahar\'s files, downloading multiple versions of system files can dramatically slow down loading for applications, save states, and the Applications list. Only download the files that you require to avoid any issues with loading speeds.</string>
+    <string name="download_system_files">Download System Files</string>
+    <string name="system_files_description">Download system files to get Mii files, boot the HOME menu, and more</string>
+    <string name="system_files">System Files</string>
+</resources>

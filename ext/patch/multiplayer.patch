@@ -1,0 +1,3469 @@
+diff --git a/src/android/app/src/main/AndroidManifest.xml b/src/android/app/src/main/AndroidManifest.xml
+index a7e3581ee8..7da32bd8d3 100644
+--- a/src/android/app/src/main/AndroidManifest.xml
++++ b/src/android/app/src/main/AndroidManifest.xml
+@@ -25,6 +25,7 @@
+     <uses-feature android:glEsVersion="0x00030002" android:required="true" />
+     <uses-feature android:name="android.hardware.opengles.aep" android:required="true" />
+
++    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+     <uses-permission android:name="android.permission.INTERNET" />
+     <uses-permission android:name="android.permission.CAMERA" />
+     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+diff --git a/src/android/app/src/main/java/org/citra/citra_emu/NativeLibrary.kt b/src/android/app/src/main/java/org/citra/citra_emu/NativeLibrary.kt
+index 3e62b5d618..f83c06f666 100644
+--- a/src/android/app/src/main/java/org/citra/citra_emu/NativeLibrary.kt
++++ b/src/android/app/src/main/java/org/citra/citra_emu/NativeLibrary.kt
+@@ -21,9 +21,9 @@ import androidx.core.content.ContextCompat
+ import androidx.fragment.app.DialogFragment
+ import com.google.android.material.dialog.MaterialAlertDialogBuilder
+ import org.citra.citra_emu.activities.EmulationActivity
+-import org.citra.citra_emu.utils.EmulationMenuSettings
+ import org.citra.citra_emu.utils.FileUtil
+ import org.citra.citra_emu.utils.Log
++import org.citra.citra_emu.utils.NetPlayManager
+ import java.lang.ref.WeakReference
+ import java.util.Date
+
+@@ -562,6 +562,26 @@ object NativeLibrary {
+      */
+     external fun logDeviceInfo()
+
++    @Keep
++    @JvmStatic
++    fun addNetPlayMessage(type: Int, message: String) {
++        val emulationActivity = sEmulationActivity.get()
++        if (emulationActivity != null) {
++            emulationActivity.addNetPlayMessages(type, message)
++        }
++        else {
++            NetPlayManager.addNetPlayMessage(type, message)
++        }
++    }
++
++    @Keep
++    @JvmStatic
++    fun clearChat() {
++        NetPlayManager.clearChat()
++    }
++
++    external fun initMultiplayer()
++
+     @Keep
+     @JvmStatic
+     fun createFile(directory: String, filename: String): Boolean =
+diff --git a/src/android/app/src/main/java/org/citra/citra_emu/activities/EmulationActivity.kt b/src/android/app/src/main/java/org/citra/citra_emu/activities/EmulationActivity.kt
+index c5f23a6a6b..644199af2f 100644
+--- a/src/android/app/src/main/java/org/citra/citra_emu/activities/EmulationActivity.kt
++++ b/src/android/app/src/main/java/org/citra/citra_emu/activities/EmulationActivity.kt
+@@ -6,7 +6,6 @@ package org.citra.citra_emu.activities
+
+ import android.Manifest.permission
+ import android.annotation.SuppressLint
+-import android.app.Activity
+ import android.content.Intent
+ import android.content.SharedPreferences
+ import android.content.pm.PackageManager
+@@ -32,6 +31,7 @@ import org.citra.citra_emu.R
+ import org.citra.citra_emu.camera.StillImageCameraHelper.OnFilePickerResult
+ import org.citra.citra_emu.contracts.OpenFileResultContract
+ import org.citra.citra_emu.databinding.ActivityEmulationBinding
++import org.citra.citra_emu.dialogs.NetPlayDialog
+ import org.citra.citra_emu.display.ScreenAdjustmentUtil
+ import org.citra.citra_emu.features.hotkeys.HotkeyUtility
+ import org.citra.citra_emu.features.settings.model.BooleanSetting
+@@ -44,6 +44,7 @@ import org.citra.citra_emu.utils.ControllerMappingHelper
+ import org.citra.citra_emu.utils.FileBrowserHelper
+ import org.citra.citra_emu.utils.EmulationLifecycleUtil
+ import org.citra.citra_emu.utils.EmulationMenuSettings
++import org.citra.citra_emu.utils.NetPlayManager
+ import org.citra.citra_emu.utils.ThemeUtil
+ import org.citra.citra_emu.utils.TurboHelper
+ import org.citra.citra_emu.viewmodel.EmulationViewModel
+@@ -195,6 +196,15 @@ class EmulationActivity : AppCompatActivity() {
+         ).show()
+     }
+
++    fun displayMultiplayerDialog() {
++        val dialog = NetPlayDialog(this)
++        dialog.show()
++    }
++
++    fun addNetPlayMessages(type: Int, msg: String) {
++        NetPlayManager.addNetPlayMessage(type, msg)
++    }
++
+     private fun enableFullscreenImmersive() {
+         val attributes = window.attributes
+
+diff --git a/src/android/app/src/main/java/org/citra/citra_emu/dialogs/ChatDialog.kt b/src/android/app/src/main/java/org/citra/citra_emu/dialogs/ChatDialog.kt
+new file mode 100644
+index 0000000000..a3a9c9271b
+--- /dev/null
++++ b/src/android/app/src/main/java/org/citra/citra_emu/dialogs/ChatDialog.kt
+@@ -0,0 +1,137 @@
++// Copyright 2025 Azahar Project
++// Licensed under GPLv2 or any later version
++// Refer to the license.txt file included
++
++package org.citra.citra_emu.dialogs
++
++import android.content.Context
++import android.content.res.Configuration
++import android.os.Bundle
++import android.os.Handler
++import android.os.Looper
++import android.view.LayoutInflater
++import android.view.ViewGroup
++import androidx.recyclerview.widget.LinearLayoutManager
++import androidx.recyclerview.widget.RecyclerView
++import com.google.android.material.bottomsheet.BottomSheetBehavior
++import com.google.android.material.bottomsheet.BottomSheetDialog
++import org.citra.citra_emu.R
++import org.citra.citra_emu.databinding.DialogChatBinding
++import org.citra.citra_emu.databinding.ItemChatMessageBinding
++import org.citra.citra_emu.utils.NetPlayManager
++import java.text.SimpleDateFormat
++import java.util.*
++
++class ChatMessage(
++    val nickname: String, // This is the common name youll see on private servers
++    val username: String, // Username is the community/forum username
++    val message: String,
++    val timestamp: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
++) {
++}
++
++class ChatDialog(context: Context) : BottomSheetDialog(context) {
++    private lateinit var binding: DialogChatBinding
++    private lateinit var chatAdapter: ChatAdapter
++    private val handler = Handler(Looper.getMainLooper())
++
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++        binding = DialogChatBinding.inflate(LayoutInflater.from(context))
++        setContentView(binding.root)
++
++        NetPlayManager.setChatOpen(true)
++        setupRecyclerView()
++
++        behavior.state = BottomSheetBehavior.STATE_EXPANDED
++        behavior.state = BottomSheetBehavior.STATE_EXPANDED
++        behavior.skipCollapsed = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
++
++
++        handler.post {
++            chatAdapter.notifyDataSetChanged()
++            binding.chatRecyclerView.post {
++                scrollToBottom()
++            }
++        }
++
++        NetPlayManager.setOnMessageReceivedListener { type, message ->
++            handler.post {
++                chatAdapter.notifyDataSetChanged()
++                scrollToBottom()
++            }
++        }
++
++        binding.sendButton.setOnClickListener {
++            val message = binding.chatInput.text.toString()
++            if (message.isNotBlank()) {
++                sendMessage(message)
++                binding.chatInput.text?.clear()
++            }
++        }
++    }
++
++    override fun dismiss() {
++        NetPlayManager.setChatOpen(false)
++        super.dismiss()
++    }
++
++    private fun sendMessage(message: String) {
++        val username = NetPlayManager.getUsername(context)
++        NetPlayManager.netPlaySendMessage(message)
++
++        val chatMessage = ChatMessage(
++            nickname = username,
++            username = "",
++            message = message,
++            timestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
++        )
++
++        NetPlayManager.addChatMessage(chatMessage)
++        chatAdapter.notifyDataSetChanged()
++        scrollToBottom()
++    }
++
++    private fun setupRecyclerView() {
++        chatAdapter = ChatAdapter(NetPlayManager.getChatMessages())
++        binding.chatRecyclerView.layoutManager = LinearLayoutManager(context).apply {
++            stackFromEnd = true
++        }
++        binding.chatRecyclerView.adapter = chatAdapter
++    }
++
++    private fun scrollToBottom() {
++        binding.chatRecyclerView.scrollToPosition(chatAdapter.itemCount - 1)
++    }
++}
++
++class ChatAdapter(private val messages: List<ChatMessage>) :
++    RecyclerView.Adapter<ChatAdapter.ChatViewHolder>() {
++
++    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ChatViewHolder {
++        val binding = ItemChatMessageBinding.inflate(
++            LayoutInflater.from(parent.context),
++            parent,
++            false
++        )
++        return ChatViewHolder(binding)
++    }
++
++    override fun getItemCount(): Int = messages.size
++
++    override fun onBindViewHolder(holder: ChatViewHolder, position: Int) {
++        holder.bind(messages[position])
++    }
++
++    inner class ChatViewHolder(private val binding: ItemChatMessageBinding) :
++        RecyclerView.ViewHolder(binding.root) {
++        fun bind(message: ChatMessage) {
++            binding.usernameText.text = message.nickname
++            binding.messageText.text = message.message
++            binding.userIcon.setImageResource(when (message.nickname) {
++                "System" -> R.drawable.ic_system
++                else -> R.drawable.ic_user
++            })
++        }
++    }
++}
+diff --git a/src/android/app/src/main/java/org/citra/citra_emu/dialogs/LobbyBrowser.kt b/src/android/app/src/main/java/org/citra/citra_emu/dialogs/LobbyBrowser.kt
+new file mode 100644
+index 0000000000..79d341b136
+--- /dev/null
++++ b/src/android/app/src/main/java/org/citra/citra_emu/dialogs/LobbyBrowser.kt
+@@ -0,0 +1,244 @@
++// Copyright 2025 Azahar Project
++// Licensed under GPLv2 or any later version
++// Refer to the license.txt file included
++
++package org.citra.citra_emu.dialogs
++
++import android.content.Context
++import android.content.res.Configuration
++import android.os.Bundle
++import android.os.Handler
++import android.os.Looper
++import android.view.LayoutInflater
++import android.view.View
++import android.view.ViewGroup
++import androidx.core.widget.doOnTextChanged
++import androidx.recyclerview.widget.DividerItemDecoration
++import androidx.recyclerview.widget.LinearLayoutManager
++import androidx.recyclerview.widget.RecyclerView
++import com.google.android.material.bottomsheet.BottomSheetBehavior
++import com.google.android.material.bottomsheet.BottomSheetDialog
++import com.google.android.material.dialog.MaterialAlertDialogBuilder
++import com.google.android.material.textfield.TextInputEditText
++import info.debatty.java.stringsimilarity.Jaccard
++import info.debatty.java.stringsimilarity.JaroWinkler
++import org.citra.citra_emu.R
++import org.citra.citra_emu.databinding.DialogLobbyBrowserBinding
++import org.citra.citra_emu.databinding.ItemLobbyRoomBinding
++import org.citra.citra_emu.utils.CompatUtils
++import org.citra.citra_emu.utils.NetPlayManager
++import java.util.Locale
++
++class LobbyBrowser(context: Context) : BottomSheetDialog(context) {
++    private lateinit var binding: DialogLobbyBrowserBinding
++    private lateinit var adapter: LobbyRoomAdapter
++    private val handler = Handler(Looper.getMainLooper())
++
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++
++        behavior.state = BottomSheetBehavior.STATE_EXPANDED
++        behavior.skipCollapsed =
++            context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
++
++        binding = DialogLobbyBrowserBinding.inflate(layoutInflater)
++        setContentView(binding.root)
++
++        binding.emptyRefreshButton.setOnClickListener {
++            binding.progressBar.visibility = View.VISIBLE
++            refreshRoomList()
++        }
++
++        setupRecyclerView()
++        setupRefreshButton()
++        refreshRoomList()
++        setupSearchBar()
++    }
++
++    private fun setupRecyclerView() {
++        adapter = LobbyRoomAdapter { room -> handleRoomSelection(room) }
++
++        binding.roomList.apply {
++            layoutManager = LinearLayoutManager(context)
++            adapter = this@LobbyBrowser.adapter
++            addItemDecoration(DividerItemDecoration(context, DividerItemDecoration.VERTICAL))
++        }
++    }
++
++    private fun setupRefreshButton() {
++        binding.refreshButton.setOnClickListener {
++            binding.refreshButton.isEnabled = false
++            binding.progressBar.visibility = View.VISIBLE
++            refreshRoomList()
++        }
++    }
++
++    private fun setupSearchBar() {
++        binding.chipGroup.setOnCheckedStateChangeListener { _, _ -> adapter.filterAndSearch() }
++
++
++        binding.searchText.doOnTextChanged { text: CharSequence?, _: Int, _: Int, _: Int ->
++            if (text.toString().isNotEmpty()) {
++                binding.clearButton.visibility = View.VISIBLE
++            } else {
++                binding.clearButton.visibility = View.INVISIBLE
++            }
++            adapter.filterAndSearch()
++        }
++
++        binding.clearButton.setOnClickListener {
++            binding.searchText.setText("")
++            adapter.updateRooms(NetPlayManager.getPublicRooms())
++        }
++    }
++
++    private fun refreshRoomList() {
++        NetPlayManager.refreshRoomListAsync { rooms ->
++            binding.emptyView.visibility = if (rooms.isEmpty()) View.VISIBLE else View.GONE
++            binding.roomList.visibility = if (rooms.isEmpty()) View.GONE else View.VISIBLE
++            binding.appbar.visibility = if (rooms.isEmpty()) View.GONE else View.VISIBLE
++            adapter.updateRooms(rooms)
++            adapter.filterAndSearch()
++            binding.refreshButton.isEnabled = true
++            binding.progressBar.visibility = View.GONE
++        }
++    }
++
++    private fun handleRoomSelection(room: NetPlayManager.RoomInfo) {
++        if (room.hasPassword) {
++            showPasswordDialog(room)
++        } else {
++            joinRoom(room, "")
++        }
++    }
++
++    private fun showPasswordDialog(room: NetPlayManager.RoomInfo) {
++        val dialogView = LayoutInflater.from(context).inflate(R.layout.dialog_password_input, null)
++        val passwordInput = dialogView.findViewById<TextInputEditText>(R.id.password_input)
++
++        MaterialAlertDialogBuilder(context)
++            .setTitle(context.getString(R.string.multiplayer_password_required))
++            .setView(dialogView)
++            .setPositiveButton(R.string.multiplayer_join_room) { _, _ ->
++                joinRoom(room, passwordInput.text.toString())
++            }
++            .setNegativeButton(android.R.string.cancel, null)
++            .show()
++    }
++
++    private fun joinRoom(room: NetPlayManager.RoomInfo, password: String) {
++        val username = NetPlayManager.getUsername(context)
++
++        Thread {
++            val result = NetPlayManager.netPlayJoinRoom(room.ip, room.port, username, password)
++
++            handler.post {
++                if (result == 0) {
++                    dismiss()
++                    NetPlayDialog(context).show()
++                }
++            }
++        }.start()
++    }
++
++    inner class LobbyRoomAdapter(private val onRoomSelected: (NetPlayManager.RoomInfo) -> Unit) :
++        RecyclerView.Adapter<LobbyRoomAdapter.RoomViewHolder>() {
++
++        private val rooms = mutableListOf<NetPlayManager.RoomInfo>()
++
++        inner class RoomViewHolder(private val binding: ItemLobbyRoomBinding) :
++            RecyclerView.ViewHolder(binding.root) {
++            fun bind(room: NetPlayManager.RoomInfo) {
++                binding.roomName.text = room.name
++                binding.roomOwner.text = room.owner
++                binding.playerCount.text = context.getString(
++                    R.string.multiplayer_player_count,
++                    room.members.size,
++                    room.maxPlayers
++                )
++
++                binding.lockIcon.visibility = if (room.hasPassword) View.VISIBLE else View.GONE
++
++                if (room.preferredGameName.isNotEmpty() && room.preferredGameId != 0L) {
++                    binding.gameName.text = room.preferredGameName
++                } else {
++                    binding.gameName.text = context.getString(R.string.multiplayer_no_game_info)
++                }
++
++                itemView.setOnClickListener { onRoomSelected(room) }
++            }
++        }
++
++        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RoomViewHolder {
++            val binding = ItemLobbyRoomBinding.inflate(
++                LayoutInflater.from(parent.context),
++                parent,
++                false
++            )
++            return RoomViewHolder(binding)
++        }
++
++        override fun onBindViewHolder(holder: RoomViewHolder, position: Int) {
++            holder.bind(rooms[position])
++        }
++
++        override fun getItemCount() = rooms.size
++
++        fun updateRooms(newRooms: List<NetPlayManager.RoomInfo>) {
++            rooms.clear()
++            rooms.addAll(newRooms)
++            notifyDataSetChanged()
++        }
++
++        fun filterAndSearch() {
++            if (binding.searchText.text.toString().isEmpty() &&
++                binding.chipGroup.checkedChipId == View.NO_ID
++            ) {
++                adapter.updateRooms(NetPlayManager.getPublicRooms())
++                return
++            }
++
++            val baseList = NetPlayManager.getPublicRooms()
++            val filteredList: List<NetPlayManager.RoomInfo> =
++                when (binding.chipGroup.checkedChipId) {
++                    R.id.chip_hide_full -> {
++                        baseList.filter { it.members.size < it.maxPlayers }
++                    }
++
++                    R.id.chip_hide_empty -> {
++                        baseList.filter {
++                            it.members.isNotEmpty()
++                        }
++                    }
++
++                    else -> baseList
++                }
++
++            if (binding.searchText.text.toString().isEmpty() &&
++                binding.chipGroup.checkedChipId != View.NO_ID
++            ) {
++                adapter.updateRooms(filteredList)
++                return
++            }
++
++            val searchTerm = binding.searchText.text.toString().lowercase(Locale.getDefault())
++            val searchAlgorithm = if (searchTerm.length > 1) Jaccard(2) else JaroWinkler()
++            val sortedList: List<NetPlayManager.RoomInfo> = filteredList.mapNotNull { room ->
++                    val roomName = room.name.lowercase(Locale.getDefault())
++
++                    val score = searchAlgorithm.similarity(roomName, searchTerm)
++                    if (score > 0.03) {
++                        ScoreItem(score, room)
++                    } else {
++                        null
++                    }
++                }.sortedByDescending { it ->
++                    it.score
++                }.map { it.item }
++            adapter.updateRooms(sortedList)
++
++        }
++    }
++
++    private inner class ScoreItem(val score: Double, val item: NetPlayManager.RoomInfo)
++}
+\ No newline at end of file
+diff --git a/src/android/app/src/main/java/org/citra/citra_emu/dialogs/NetPlayDialog.kt b/src/android/app/src/main/java/org/citra/citra_emu/dialogs/NetPlayDialog.kt
+new file mode 100644
+index 0000000000..dc4fd75aec
+--- /dev/null
++++ b/src/android/app/src/main/java/org/citra/citra_emu/dialogs/NetPlayDialog.kt
+@@ -0,0 +1,437 @@
++// Copyright 2024 Mandarine Project
++// Licensed under GPLv2 or any later version
++// Refer to the license.txt file included.
++
++package org.citra.citra_emu.dialogs
++
++import android.content.Context
++import android.content.res.Configuration
++import android.os.Bundle
++import android.os.Handler
++import android.os.Looper
++import android.view.LayoutInflater
++import android.view.View
++import android.view.ViewGroup
++import android.widget.ArrayAdapter
++import android.widget.PopupMenu
++import android.widget.Toast
++import androidx.recyclerview.widget.LinearLayoutManager
++import androidx.recyclerview.widget.RecyclerView
++import com.google.android.material.bottomsheet.BottomSheetBehavior
++import com.google.android.material.bottomsheet.BottomSheetDialog
++import com.google.android.material.dialog.MaterialAlertDialogBuilder
++import org.citra.citra_emu.CitraApplication
++import org.citra.citra_emu.R
++import org.citra.citra_emu.databinding.DialogMultiplayerConnectBinding
++import org.citra.citra_emu.databinding.DialogMultiplayerLobbyBinding
++import org.citra.citra_emu.databinding.DialogMultiplayerRoomBinding
++import org.citra.citra_emu.databinding.ItemBanListBinding
++import org.citra.citra_emu.databinding.ItemButtonNetplayBinding
++import org.citra.citra_emu.databinding.ItemTextNetplayBinding
++import org.citra.citra_emu.dialogs.ChatDialog
++import org.citra.citra_emu.utils.CompatUtils
++import org.citra.citra_emu.utils.GameHelper
++import org.citra.citra_emu.utils.NetPlayManager
++
++class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
++    private lateinit var adapter: NetPlayAdapter
++    private val gameNameList: MutableList<Array<String>> = mutableListOf()
++    private val gameIdList: MutableList<Array<Long>> = mutableListOf()
++
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++
++        behavior.state = BottomSheetBehavior.STATE_EXPANDED
++        behavior.state = BottomSheetBehavior.STATE_EXPANDED
++        behavior.skipCollapsed = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
++
++        when {
++            NetPlayManager.netPlayIsJoined() -> DialogMultiplayerLobbyBinding.inflate(layoutInflater)
++                .apply {
++                    setContentView(root)
++                    adapter = NetPlayAdapter()
++                    listMultiplayer.layoutManager = LinearLayoutManager(context)
++                    listMultiplayer.adapter = adapter
++                    adapter.loadMultiplayerMenu()
++                    btnLeave.setOnClickListener {
++                        NetPlayManager.netPlayLeaveRoom()
++                        dismiss()
++                    }
++                    btnChat.setOnClickListener {
++                        ChatDialog(context).show()
++                    }
++
++                    refreshAdapterItems()
++
++                    btnModeration.visibility = if (NetPlayManager.netPlayIsModerator()) View.VISIBLE else View.GONE
++                    btnModeration.setOnClickListener {
++                        showModerationDialog()
++                    }
++
++                }
++            else -> {
++                DialogMultiplayerConnectBinding.inflate(layoutInflater).apply {
++                    setContentView(root)
++                    // Prepare the game list in case a user tries to create a room
++                    for (game in GameHelper.cachedGameList) {
++                        val gameName = game.title
++                        if (gameNameList.none { it[0] == gameName }) {
++                            gameNameList.add(arrayOf(gameName))
++                        }
++
++                        val gameId = game.titleId
++                        if (gameIdList.none { it[0] == gameId }) {
++                            gameIdList.add((arrayOf(gameId)))
++                        }
++                    }
++
++                    btnCreate.setOnClickListener {
++                        showNetPlayInputDialog(true)
++                        dismiss()
++                    }
++                    btnJoin.setOnClickListener {
++                        showNetPlayInputDialog(false)
++                        dismiss()
++                    }
++                    btnLobbyBrowser.setOnClickListener {
++                        LobbyBrowser(context).show()
++                        dismiss()
++                    }
++                }
++            }
++        }
++    }
++
++    data class NetPlayItems(
++        val option: Int,
++        val name: String,
++        val type: Int,
++        val id: Int = 0
++    ) {
++        companion object {
++            const val MULTIPLAYER_ROOM_TEXT = 1
++            const val MULTIPLAYER_ROOM_MEMBER = 2
++            const val MULTIPLAYER_SEPARATOR = 3
++            const val MULTIPLAYER_ROOM_COUNT = 4
++            const val TYPE_BUTTON = 0
++            const val TYPE_TEXT = 1
++            const val TYPE_SEPARATOR = 2
++        }
++    }
++
++    inner class NetPlayAdapter : RecyclerView.Adapter<NetPlayAdapter.NetPlayViewHolder>() {
++        val netPlayItems = mutableListOf<NetPlayItems>()
++
++        abstract inner class NetPlayViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView), View.OnClickListener {
++            init {
++                itemView.setOnClickListener(this)
++            }
++            abstract fun bind(item: NetPlayItems)
++        }
++
++        inner class TextViewHolder(private val binding: ItemTextNetplayBinding) : NetPlayViewHolder(binding.root) {
++            private lateinit var netPlayItem: NetPlayItems
++
++            override fun onClick(clicked: View) {}
++
++            override fun bind(item: NetPlayItems) {
++                netPlayItem = item
++                binding.itemTextNetplayName.text = item.name
++                binding.itemIcon.apply {
++                    val iconRes = when (item.option) {
++                        NetPlayItems.MULTIPLAYER_ROOM_TEXT -> R.drawable.ic_system
++                        NetPlayItems.MULTIPLAYER_ROOM_COUNT -> R.drawable.ic_joined
++                        else -> 0
++                    }
++                    visibility = if (iconRes != 0) {
++                        setImageResource(iconRes)
++                        View.VISIBLE
++                    } else View.GONE
++                }
++            }
++        }
++
++        inner class ButtonViewHolder(private val binding: ItemButtonNetplayBinding) : NetPlayViewHolder(binding.root) {
++            private lateinit var netPlayItems: NetPlayItems
++            private val isModerator = NetPlayManager.netPlayIsModerator()
++
++            init {
++                binding.itemButtonMore.apply {
++                    visibility = View.VISIBLE
++                    setOnClickListener { showPopupMenu(it) }
++                }
++            }
++
++            override fun onClick(clicked: View) {}
++
++            private fun showPopupMenu(view: View) {
++                PopupMenu(view.context, view).apply {
++                    inflate(R.menu.menu_netplay_member)
++                    menu.findItem(R.id.action_kick).isEnabled = isModerator &&
++                            netPlayItems.name != NetPlayManager.getUsername(context)
++                    menu.findItem(R.id.action_ban).isEnabled = isModerator &&
++                            netPlayItems.name != NetPlayManager.getUsername(context)
++                    setOnMenuItemClickListener { item ->
++                        if (item.itemId == R.id.action_kick) {
++                            NetPlayManager.netPlayKickUser(netPlayItems.name)
++                            true
++                        } else if (item.itemId == R.id.action_ban) {
++                            NetPlayManager.netPlayBanUser(netPlayItems.name)
++                            true
++                        } else false
++                    }
++                    show()
++                }
++            }
++
++            override fun bind(item: NetPlayItems) {
++                netPlayItems = item
++                binding.itemButtonNetplayName.text = netPlayItems.name
++            }
++        }
++
++        fun loadMultiplayerMenu() {
++            val infos = NetPlayManager.netPlayRoomInfo()
++            if (infos.isNotEmpty()) {
++                val roomInfo = infos[0].split("|")
++                netPlayItems.add(NetPlayItems(NetPlayItems.MULTIPLAYER_ROOM_TEXT, roomInfo[0], NetPlayItems.TYPE_TEXT))
++                netPlayItems.add(NetPlayItems(NetPlayItems.MULTIPLAYER_ROOM_COUNT, "${infos.size - 1}/${roomInfo[1]}", NetPlayItems.TYPE_TEXT))
++                netPlayItems.add(NetPlayItems(NetPlayItems.MULTIPLAYER_SEPARATOR, "", NetPlayItems.TYPE_SEPARATOR))
++                for (i in 1 until infos.size) {
++                    netPlayItems.add(NetPlayItems(NetPlayItems.MULTIPLAYER_ROOM_MEMBER, infos[i], NetPlayItems.TYPE_BUTTON))
++                }
++            }
++        }
++
++        override fun getItemViewType(position: Int) = netPlayItems[position].type
++
++        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): NetPlayViewHolder {
++            val inflater = LayoutInflater.from(parent.context)
++            return when (viewType) {
++                NetPlayItems.TYPE_TEXT -> TextViewHolder(ItemTextNetplayBinding.inflate(inflater, parent, false))
++                NetPlayItems.TYPE_BUTTON -> ButtonViewHolder(ItemButtonNetplayBinding.inflate(inflater, parent, false))
++                NetPlayItems.TYPE_SEPARATOR -> object : NetPlayViewHolder(inflater.inflate(R.layout.item_separator_netplay, parent, false)) {
++                    override fun bind(item: NetPlayItems) {}
++                    override fun onClick(clicked: View) {}
++                }
++                else -> throw IllegalStateException("Unsupported view type")
++            }
++        }
++
++        override fun onBindViewHolder(holder: NetPlayViewHolder, position: Int) {
++            holder.bind(netPlayItems[position])
++        }
++
++        override fun getItemCount() = netPlayItems.size
++    }
++
++    fun refreshAdapterItems() {
++        val handler = Handler(Looper.getMainLooper())
++
++        NetPlayManager.setOnAdapterRefreshListener() { type, msg ->
++            handler.post {
++                adapter.netPlayItems.clear()
++                adapter.loadMultiplayerMenu()
++                adapter.notifyDataSetChanged()
++            }
++        }
++    }
++
++    private fun showNetPlayInputDialog(isCreateRoom: Boolean) {
++        val activity = CompatUtils.findActivity(context)
++        val dialog = BottomSheetDialog(activity)
++
++        dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
++        dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
++        dialog.behavior.skipCollapsed = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
++
++
++        val binding = DialogMultiplayerRoomBinding.inflate(LayoutInflater.from(activity))
++        dialog.setContentView(binding.root)
++
++        binding.textTitle.text = activity.getString(
++            if (isCreateRoom) R.string.multiplayer_create_room
++            else R.string.multiplayer_join_room
++        )
++
++        binding.ipAddress.setText(
++            if (isCreateRoom) NetPlayManager.getIpAddressByWifi(activity)
++            else NetPlayManager.getRoomAddress(activity)
++        )
++        binding.ipPort.setText(NetPlayManager.getRoomPort(activity))
++        binding.username.setText(NetPlayManager.getUsername(activity))
++
++        binding.dropdownPreferedGameName.apply {
++            setAdapter(
++                ArrayAdapter(
++                    activity,
++                    R.layout.dropdown_item,
++                    gameNameList.map { it[0] }
++                )
++            )
++        }
++
++        binding.preferedGameName.visibility = if (isCreateRoom) View.VISIBLE else View.GONE
++        binding.roomName.visibility = if (isCreateRoom) View.VISIBLE else View.GONE
++        binding.maxPlayersContainer.visibility = if (isCreateRoom) View.VISIBLE else View.GONE
++        binding.maxPlayersLabel.text = context.getString(R.string.multiplayer_max_players_value, binding.maxPlayers.value.toInt())
++
++        binding.maxPlayers.addOnChangeListener { _, value, _ ->
++            binding.maxPlayersLabel.text = context.getString(R.string.multiplayer_max_players_value, value.toInt())
++        }
++
++        binding.btnConfirm.setOnClickListener {
++            binding.btnConfirm.isEnabled = false
++            binding.btnConfirm.text = activity.getString(R.string.disabled_button_text)
++
++            val ipAddress = binding.ipAddress.text.toString()
++            val username = binding.username.text.toString()
++            val portStr = binding.ipPort.text.toString()
++            val preferedGameName = binding.dropdownPreferedGameName.text.toString()
++            val preferedGameId = gameIdList[gameNameList.indexOfFirst { it[0] == preferedGameName }][0]
++            val password = binding.password.text.toString()
++            val port = portStr.toIntOrNull() ?: run {
++                Toast.makeText(activity, R.string.multiplayer_port_invalid, Toast.LENGTH_LONG).show()
++                binding.btnConfirm.isEnabled = true
++                binding.btnConfirm.text = activity.getString(R.string.original_button_text)
++                return@setOnClickListener
++            }
++            val roomName = binding.roomName.text.toString()
++            val maxPlayers = binding.maxPlayers.value.toInt()
++
++            if (isCreateRoom && (roomName.length !in 3..20)) {
++                Toast.makeText(activity, R.string.multiplayer_room_name_invalid, Toast.LENGTH_LONG).show()
++                binding.btnConfirm.isEnabled = true
++                binding.btnConfirm.text = activity.getString(R.string.original_button_text)
++                return@setOnClickListener
++            }
++
++            if (isCreateRoom && preferedGameName.isEmpty()) {
++                Toast.makeText(activity, R.string.multiplayer_prefered_game_name_invalid, Toast.LENGTH_LONG).show()
++                binding.btnConfirm.isEnabled = true
++                binding.btnConfirm.text = activity.getString(R.string.original_button_text)
++                return@setOnClickListener
++            }
++
++            if (ipAddress.length < 7 || username.length < 5) {
++                Toast.makeText(activity, R.string.multiplayer_input_invalid, Toast.LENGTH_LONG).show()
++                binding.btnConfirm.isEnabled = true
++                binding.btnConfirm.text = activity.getString(R.string.original_button_text)
++            } else {
++                Handler(Looper.getMainLooper()).post {
++                    val result = if (isCreateRoom) {
++                        NetPlayManager.netPlayCreateRoom(ipAddress, port, username, preferedGameName, preferedGameId, password, roomName, maxPlayers)
++                    } else {
++                        NetPlayManager.netPlayJoinRoom(ipAddress, port, username, password)
++                    }
++
++                    if (result == 0) {
++                        NetPlayManager.setUsername(activity, username)
++                        NetPlayManager.setRoomPort(activity, portStr)
++                        if (!isCreateRoom) NetPlayManager.setRoomAddress(activity, ipAddress)
++                        Toast.makeText(
++                            CitraApplication.appContext,
++                            if (isCreateRoom) R.string.multiplayer_create_room_success
++                            else R.string.multiplayer_join_room_success,
++                            Toast.LENGTH_LONG
++                        ).show()
++                        dialog.dismiss()
++                    } else {
++                        Toast.makeText(activity, R.string.multiplayer_could_not_connect, Toast.LENGTH_LONG).show()
++                        binding.btnConfirm.isEnabled = true
++                        binding.btnConfirm.text = activity.getString(R.string.original_button_text)
++                    }
++                }
++            }
++        }
++
++        dialog.show()
++    }
++
++    private fun showModerationDialog() {
++        val activity = CompatUtils.findActivity(context)
++        val dialog = MaterialAlertDialogBuilder(activity)
++        dialog.setTitle(R.string.multiplayer_moderation_title)
++
++        val banList = NetPlayManager.getBanList()
++        if (banList.isEmpty()) {
++            dialog.setMessage(R.string.multiplayer_no_bans)
++            dialog.setPositiveButton(android.R.string.ok, null)
++            dialog.show()
++            return
++        }
++
++        val view = LayoutInflater.from(context).inflate(R.layout.dialog_ban_list, null)
++        val recyclerView = view.findViewById<RecyclerView>(R.id.ban_list_recycler)
++        recyclerView.layoutManager = LinearLayoutManager(context)
++
++        lateinit var adapter: BanListAdapter
++
++        val onUnban: (String) -> Unit = { bannedItem ->
++            MaterialAlertDialogBuilder(activity)
++                .setTitle(R.string.multiplayer_unban_title)
++                .setMessage(activity.getString(R.string.multiplayer_unban_message, bannedItem))
++                .setPositiveButton(R.string.multiplayer_unban) { _, _ ->
++                    NetPlayManager.netPlayUnbanUser(bannedItem)
++                    adapter.removeBan(bannedItem)
++                }
++                .setNegativeButton(android.R.string.cancel, null)
++                .show()
++        }
++
++        adapter = BanListAdapter(banList, onUnban)
++        recyclerView.adapter = adapter
++
++        dialog.setView(view)
++        dialog.setPositiveButton(android.R.string.ok, null)
++        dialog.show()
++    }
++
++    private class BanListAdapter(
++        banList: List<String>,
++        private val onUnban: (String) -> Unit
++    ) : RecyclerView.Adapter<BanListAdapter.ViewHolder>() {
++
++        private val usernameBans = banList.filter { !it.contains(".") }.toMutableList()
++        private val ipBans = banList.filter { it.contains(".") }.toMutableList()
++
++        class ViewHolder(val binding: ItemBanListBinding) : RecyclerView.ViewHolder(binding.root)
++
++        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
++            val binding = ItemBanListBinding.inflate(
++                LayoutInflater.from(parent.context), parent, false)
++            return ViewHolder(binding)
++        }
++
++        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
++            val isUsername = position < usernameBans.size
++            val item = if (isUsername) usernameBans[position] else ipBans[position - usernameBans.size]
++
++            holder.binding.apply {
++                banText.text = item
++                icon.setImageResource(if (isUsername) R.drawable.ic_user else R.drawable.ic_ip)
++                btnUnban.setOnClickListener { onUnban(item) }
++            }
++        }
++
++        override fun getItemCount() = usernameBans.size + ipBans.size
++
++        fun removeBan(bannedItem: String) {
++            val position = if (bannedItem.contains(".")) {
++                ipBans.indexOf(bannedItem).let { if (it >= 0) it + usernameBans.size else it }
++            } else {
++                usernameBans.indexOf(bannedItem)
++            }
++
++            if (position >= 0) {
++                if (bannedItem.contains(".")) {
++                    ipBans.remove(bannedItem)
++                } else {
++                    usernameBans.remove(bannedItem)
++                }
++                notifyItemRemoved(position)
++            }
++        }
++
++    }
++}
+\ No newline at end of file
+diff --git a/src/android/app/src/main/java/org/citra/citra_emu/fragments/EmulationFragment.kt b/src/android/app/src/main/java/org/citra/citra_emu/fragments/EmulationFragment.kt
+index 7aeecf453d..a9f8fc10d4 100644
+--- a/src/android/app/src/main/java/org/citra/citra_emu/fragments/EmulationFragment.kt
++++ b/src/android/app/src/main/java/org/citra/citra_emu/fragments/EmulationFragment.kt
+@@ -349,6 +349,11 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback, Choreographer.Fram
+                     true
+                 }
+
++                R.id.menu_multiplayer -> {
++                    emulationActivity.displayMultiplayerDialog()
++                    true
++                }
++
+                 R.id.menu_exit -> {
+                     NativeLibrary.pauseEmulation()
+                     MaterialAlertDialogBuilder(requireContext())
+diff --git a/src/android/app/src/main/java/org/citra/citra_emu/fragments/HomeSettingsFragment.kt b/src/android/app/src/main/java/org/citra/citra_emu/fragments/HomeSettingsFragment.kt
+index e7ff2ba34..298e81de7 100644
+--- a/src/android/app/src/main/java/org/citra/citra_emu/fragments/HomeSettingsFragment.kt
++++ b/src/android/app/src/main/java/org/citra/citra_emu/fragments/HomeSettingsFragment.kt
+@@ -130,6 +130,12 @@ class HomeSettingsFragment : Fragment() {
+                         ?.navigate(R.id.action_homeSettingsFragment_to_systemFilesFragment)
+                 }
+             ),
++            HomeSetting(
++                R.string.multiplayer,
++                R.string.multiplayer_description,
++                R.drawable.ic_multiplayer,
++                { mainActivity.displayMultiplayerDialog() }
++            ),
+             HomeSetting(
+                 R.string.install_game_content,
+                 R.string.install_game_content_description,
+
+diff --git a/src/android/app/src/main/java/org/citra/citra_emu/ui/main/MainActivity.kt b/src/android/app/src/main/java/org/citra/citra_emu/ui/main/MainActivity.kt
+index 651c325b38..de27d3386e 100644
+--- a/src/android/app/src/main/java/org/citra/citra_emu/ui/main/MainActivity.kt
++++ b/src/android/app/src/main/java/org/citra/citra_emu/ui/main/MainActivity.kt
+@@ -35,9 +35,11 @@ import androidx.work.WorkManager
+ import com.google.android.material.color.MaterialColors
+ import com.google.android.material.navigation.NavigationBarView
+ import kotlinx.coroutines.launch
++import org.citra.citra_emu.NativeLibrary
+ import org.citra.citra_emu.R
+ import org.citra.citra_emu.contracts.OpenFileResultContract
+ import org.citra.citra_emu.databinding.ActivityMainBinding
++import org.citra.citra_emu.dialogs.NetPlayDialog
+ import org.citra.citra_emu.features.settings.model.Settings
+ import org.citra.citra_emu.features.settings.model.SettingsViewModel
+ import org.citra.citra_emu.features.settings.ui.SettingsActivity
+@@ -83,6 +85,7 @@ class MainActivity : AppCompatActivity(), ThemeProvider {
+         ThemeUtil.ThemeChangeListener(this)
+         ThemeUtil.setTheme(this)
+         super.onCreate(savedInstanceState)
++        NativeLibrary.initMultiplayer()
+
+         binding = ActivityMainBinding.inflate(layoutInflater)
+         setContentView(binding.root)
+@@ -175,6 +178,11 @@ class MainActivity : AppCompatActivity(), ThemeProvider {
+         super.onDestroy()
+     }
+
++    fun displayMultiplayerDialog() {
++        val dialog = NetPlayDialog(this)
++        dialog.show()
++    }
++
+     override fun setTheme(resId: Int) {
+         super.setTheme(resId)
+         themeId = resId
+diff --git a/src/android/app/src/main/java/org/citra/citra_emu/utils/CompatUtils.kt b/src/android/app/src/main/java/org/citra/citra_emu/utils/CompatUtils.kt
+new file mode 100644
+index 0000000000..00e4f37239
+--- /dev/null
++++ b/src/android/app/src/main/java/org/citra/citra_emu/utils/CompatUtils.kt
+@@ -0,0 +1,19 @@
++// Copyright 2024 Mandarine Project
++// Licensed under GPLv2 or any later version
++// Refer to the license.txt file included.
++
++package org.citra.citra_emu.utils
++
++import android.app.Activity
++import android.content.Context
++import android.content.ContextWrapper
++
++object CompatUtils {
++    fun findActivity(context: Context): Activity {
++        return when (context) {
++            is Activity -> context
++            is ContextWrapper -> findActivity(context.baseContext)
++            else -> throw IllegalArgumentException("Context is not an Activity")
++        }
++    }
++}
+diff --git a/src/android/app/src/main/java/org/citra/citra_emu/utils/GameHelper.kt b/src/android/app/src/main/java/org/citra/citra_emu/utils/GameHelper.kt
+index 771064d747..a1f94bc800 100644
+--- a/src/android/app/src/main/java/org/citra/citra_emu/utils/GameHelper.kt
++++ b/src/android/app/src/main/java/org/citra/citra_emu/utils/GameHelper.kt
+@@ -21,6 +21,8 @@ object GameHelper {
+     const val KEY_GAME_PATH = "game_path"
+     const val KEY_GAMES = "Games"
+
++    // Since the game val in GetGame is tied to the JNI we need to cache the game list in order to use it elsewhere
++    var cachedGameList = mutableListOf<Game>()
+     private lateinit var preferences: SharedPreferences
+
+     fun getGames(): List<Game> {
+@@ -45,6 +47,7 @@ object GameHelper {
+             .putStringSet(KEY_GAMES, serializedGames)
+             .apply()
+
++        cachedGameList = games.toMutableList()
+         return games.toList()
+     }
+
+diff --git a/src/android/app/src/main/java/org/citra/citra_emu/utils/NetPlayManager.kt b/src/android/app/src/main/java/org/citra/citra_emu/utils/NetPlayManager.kt
+new file mode 100644
+index 0000000000..d9b12d078c
+--- /dev/null
++++ b/src/android/app/src/main/java/org/citra/citra_emu/utils/NetPlayManager.kt
+@@ -0,0 +1,313 @@
++// Copyright 2024 Mandarine Project
++// Licensed under GPLv2 or any later version
++// Refer to the license.txt file included.
++
++package org.citra.citra_emu.utils
++
++import android.app.Activity
++import android.content.Context
++import android.net.ConnectivityManager
++import android.net.NetworkCapabilities
++import android.net.wifi.WifiManager
++import android.os.Build
++import android.os.Handler
++import android.os.Looper
++import android.text.format.Formatter
++import android.widget.Toast
++import androidx.preference.PreferenceManager
++import org.citra.citra_emu.CitraApplication
++import org.citra.citra_emu.R
++import org.citra.citra_emu.dialogs.ChatMessage
++import java.net.Inet4Address
++
++object NetPlayManager {
++    external fun netPlayCreateRoom(ipAddress: String, port: Int, username: String, preferedGameName:String, preferredGameId: Long, password: String, roomName: String, maxPlayers: Int): Int
++    external fun netPlayJoinRoom(ipAddress: String, port: Int, username: String, password: String): Int
++    external fun netPlayRoomInfo(): Array<String>
++    external fun netPlayIsJoined(): Boolean
++    external fun netPlayIsHostedRoom(): Boolean
++    external fun netPlaySendMessage(msg: String)
++    external fun netPlayKickUser(username: String)
++    external fun netPlayLeaveRoom()
++    external fun netPlayIsModerator(): Boolean
++    external fun netPlayGetBanList(): Array<String>
++    external fun netPlayBanUser(username: String)
++    external fun netPlayUnbanUser(username: String)
++    external fun netPlayGetPublicRooms(): Array<String>
++
++    data class RoomInfo(
++        val name: String,
++        val hasPassword: Boolean,
++        val maxPlayers: Int,
++        val ip: String,
++        val port: Int,
++        val description: String,
++        val owner: String,
++        val preferredGameId: Long,
++        val preferredGameName: String,
++        val members: MutableList<RoomMember> = mutableListOf()
++    )
++
++    data class RoomMember(
++        val username: String,
++        val nickname: String,
++        val gameId: Long,
++        val gameName: String
++    )
++
++    private var messageListener: ((Int, String) -> Unit)? = null
++    private var adapterRefreshListener: ((Int, String) -> Unit)? = null
++
++    fun setOnMessageReceivedListener(listener: (Int, String) -> Unit) {
++        messageListener = listener
++    }
++
++    fun getPublicRooms(): List<RoomInfo> {
++        val roomData = netPlayGetPublicRooms()
++        val rooms = mutableMapOf<String, RoomInfo>()
++
++        for (data in roomData) {
++            val parts = data.split("|")
++
++            if (parts[0] == "MEMBER" && parts.size >= 6) {
++                val roomName = parts[1]
++                val member = RoomMember(
++                    username = parts[2],
++                    nickname = parts[3],
++                    gameId = parts[4].toLongOrNull() ?: 0L,
++                    gameName = parts[5]
++                )
++                rooms[roomName]?.members?.add(member)
++            } else if (parts.size >= 9) {
++                val roomInfo = RoomInfo(
++                    name = parts[0],
++                    hasPassword = parts[1] == "1",
++                    maxPlayers = parts[2].toIntOrNull() ?: 0,
++                    ip = parts[3],
++                    port = parts[4].toIntOrNull() ?: 0,
++                    description = parts[5],
++                    owner = parts[6],
++                    preferredGameId = parts[7].toLongOrNull() ?: 0L,
++                    preferredGameName = parts[8]
++                )
++                rooms[roomInfo.name] = roomInfo
++            }
++        }
++
++        return rooms.values.toList()
++    }
++
++    fun refreshRoomListAsync(callback: (List<RoomInfo>) -> Unit) {
++        Thread {
++            val rooms =  getPublicRooms()
++
++            Handler(Looper.getMainLooper()).post {
++                callback(rooms)
++            }
++        }.start()
++    }
++
++    fun setOnAdapterRefreshListener(listener: (Int, String) -> Unit) {
++        adapterRefreshListener = listener
++    }
++
++    fun getUsername(activity: Context): String {        val prefs = PreferenceManager.getDefaultSharedPreferences(activity)
++        val name = "Azahar${(Math.random() * 100).toInt()}"
++        return prefs.getString("NetPlayUsername", name) ?: name
++    }
++
++    fun setUsername(activity: Activity, name: String) {
++        val prefs = PreferenceManager.getDefaultSharedPreferences(activity)
++        prefs.edit().putString("NetPlayUsername", name).apply()
++    }
++
++    fun getRoomAddress(activity: Activity): String {
++        val prefs = PreferenceManager.getDefaultSharedPreferences(activity)
++        val address = getIpAddressByWifi(activity)
++        return prefs.getString("NetPlayRoomAddress", address) ?: address
++    }
++
++    fun setRoomAddress(activity: Activity, address: String) {
++        val prefs = PreferenceManager.getDefaultSharedPreferences(activity)
++        prefs.edit().putString("NetPlayRoomAddress", address).apply()
++    }
++
++    fun getRoomPort(activity: Activity): String {
++        val prefs = PreferenceManager.getDefaultSharedPreferences(activity)
++        return prefs.getString("NetPlayRoomPort", "24872") ?: "24872"
++    }
++
++    fun setRoomPort(activity: Activity, port: String) {
++        val prefs = PreferenceManager.getDefaultSharedPreferences(activity)
++        prefs.edit().putString("NetPlayRoomPort", port).apply()
++    }
++
++    private val chatMessages = mutableListOf<ChatMessage>()
++    private var isChatOpen = false
++
++    fun addChatMessage(message: ChatMessage) {
++        chatMessages.add(message)
++    }
++
++    fun getChatMessages(): List<ChatMessage> = chatMessages
++
++    fun clearChat() {
++        chatMessages.clear()
++    }
++
++    fun setChatOpen(isOpen: Boolean) {
++        isChatOpen = isOpen
++    }
++
++    fun addNetPlayMessage(type: Int, msg: String) {
++        val context = CitraApplication.appContext
++        val message = formatNetPlayStatus(context, type, msg)
++
++        when (type) {
++            NetPlayStatus.CHAT_MESSAGE -> {
++                val parts = msg.split(":", limit = 2)
++                if (parts.size == 2) {
++                    val nickname = parts[0].trim()
++                    val chatMessage = parts[1].trim()
++                    addChatMessage(
++                        ChatMessage(
++                        nickname = nickname,
++                        username = "",
++                        message = chatMessage
++                    )
++                    )
++                }
++            }
++            NetPlayStatus.MEMBER_JOIN,
++            NetPlayStatus.MEMBER_LEAVE,
++            NetPlayStatus.MEMBER_KICKED,
++            NetPlayStatus.MEMBER_BANNED -> {
++                addChatMessage(
++                    ChatMessage(
++                    nickname = "System",
++                    username = "",
++                    message = message
++                )
++                )
++            }
++        }
++
++            Handler(Looper.getMainLooper()).post {
++                if (!isChatOpen) {
++                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
++                }
++            }
++
++
++        messageListener?.invoke(type, msg)
++        adapterRefreshListener?.invoke(type, msg)
++    }
++
++    private fun formatNetPlayStatus(context: Context, type: Int, msg: String): String {
++        return when (type) {
++            NetPlayStatus.NETWORK_ERROR -> context.getString(R.string.multiplayer_network_error)
++            NetPlayStatus.LOST_CONNECTION -> context.getString(R.string.multiplayer_lost_connection)
++            NetPlayStatus.NAME_COLLISION -> context.getString(R.string.multiplayer_name_collision)
++            NetPlayStatus.MAC_COLLISION -> context.getString(R.string.multiplayer_mac_collision)
++            NetPlayStatus.CONSOLE_ID_COLLISION -> context.getString(R.string.multiplayer_console_id_collision)
++            NetPlayStatus.WRONG_VERSION -> context.getString(R.string.multiplayer_wrong_version)
++            NetPlayStatus.WRONG_PASSWORD -> context.getString(R.string.multiplayer_wrong_password)
++            NetPlayStatus.COULD_NOT_CONNECT -> context.getString(R.string.multiplayer_could_not_connect)
++            NetPlayStatus.ROOM_IS_FULL -> context.getString(R.string.multiplayer_room_is_full)
++            NetPlayStatus.HOST_BANNED -> context.getString(R.string.multiplayer_host_banned)
++            NetPlayStatus.PERMISSION_DENIED -> context.getString(R.string.multiplayer_permission_denied)
++            NetPlayStatus.NO_SUCH_USER -> context.getString(R.string.multiplayer_no_such_user)
++            NetPlayStatus.ALREADY_IN_ROOM -> context.getString(R.string.multiplayer_already_in_room)
++            NetPlayStatus.CREATE_ROOM_ERROR -> context.getString(R.string.multiplayer_create_room_error)
++            NetPlayStatus.HOST_KICKED -> context.getString(R.string.multiplayer_host_kicked)
++            NetPlayStatus.UNKNOWN_ERROR -> context.getString(R.string.multiplayer_unknown_error)
++            NetPlayStatus.ROOM_UNINITIALIZED -> context.getString(R.string.multiplayer_room_uninitialized)
++            NetPlayStatus.ROOM_IDLE -> context.getString(R.string.multiplayer_room_idle)
++            NetPlayStatus.ROOM_JOINING -> context.getString(R.string.multiplayer_room_joining)
++            NetPlayStatus.ROOM_JOINED -> context.getString(R.string.multiplayer_room_joined)
++            NetPlayStatus.ROOM_MODERATOR -> context.getString(R.string.multiplayer_room_moderator)
++            NetPlayStatus.MEMBER_JOIN -> context.getString(R.string.multiplayer_member_join, msg)
++            NetPlayStatus.MEMBER_LEAVE -> context.getString(R.string.multiplayer_member_leave, msg)
++            NetPlayStatus.MEMBER_KICKED -> context.getString(R.string.multiplayer_member_kicked, msg)
++            NetPlayStatus.MEMBER_BANNED -> context.getString(R.string.multiplayer_member_banned, msg)
++            NetPlayStatus.ADDRESS_UNBANNED -> context.getString(R.string.multiplayer_address_unbanned)
++            NetPlayStatus.CHAT_MESSAGE -> msg
++            else -> ""
++        }
++    }
++
++    fun isConnectedToWifi(activity: Activity): Boolean {
++        val connectivityManager = activity.getSystemService(ConnectivityManager::class.java)
++        val network = connectivityManager.activeNetwork
++        val capabilities = connectivityManager.getNetworkCapabilities(network)
++        return capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
++    }
++
++    fun getIpAddressByWifi(activity: Activity): String {
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
++            // For Android 12 (API 31) and above
++            val connectivityManager = activity.getSystemService(ConnectivityManager::class.java)
++            val network = connectivityManager.activeNetwork
++            val capabilities = connectivityManager.getNetworkCapabilities(network)
++
++            if (capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true) {
++                val linkProperties = connectivityManager.getLinkProperties(network)
++                linkProperties?.linkAddresses?.firstOrNull { it.address is Inet4Address }?.let {
++                    return it.address.hostAddress ?: "192.168.0.1"
++                }
++            }
++        } else {
++            // For Android 11 (API 30) and below
++            try {
++                val connectivityManager = activity.getSystemService(ConnectivityManager::class.java)
++                val network = connectivityManager.activeNetwork
++                if (network != null) {
++                    val linkProperties = connectivityManager.getLinkProperties(network)
++                    linkProperties?.linkAddresses?.firstOrNull { it.address is Inet4Address }?.let {
++                        return it.address.hostAddress ?: "192.168.0.1"
++                    }
++                }
++            } catch (e: Exception) {
++                e.printStackTrace()
++            }
++        }
++
++        return "192.168.0.1"
++    }
++
++    fun getBanList(): List<String> {
++        Log.info("Netplay Ban ${netPlayGetBanList()}.toList()")
++        return netPlayGetBanList().toList()
++    }
++
++    object NetPlayStatus {
++        const val NO_ERROR = 0
++        const val NETWORK_ERROR = 1
++        const val LOST_CONNECTION = 2
++        const val NAME_COLLISION = 3
++        const val MAC_COLLISION = 4
++        const val CONSOLE_ID_COLLISION = 5
++        const val WRONG_VERSION = 6
++        const val WRONG_PASSWORD = 7
++        const val COULD_NOT_CONNECT = 8
++        const val ROOM_IS_FULL = 9
++        const val HOST_BANNED = 10
++        const val PERMISSION_DENIED = 11
++        const val NO_SUCH_USER = 12
++        const val ALREADY_IN_ROOM = 13
++        const val CREATE_ROOM_ERROR = 14
++        const val HOST_KICKED = 15
++        const val UNKNOWN_ERROR = 16
++        const val ROOM_UNINITIALIZED = 17
++        const val ROOM_IDLE = 18
++        const val ROOM_JOINING = 19
++        const val ROOM_JOINED = 20
++        const val ROOM_MODERATOR = 21
++        const val MEMBER_JOIN = 22
++        const val MEMBER_LEAVE = 23
++        const val MEMBER_KICKED = 24
++        const val MEMBER_BANNED = 25
++        const val ADDRESS_UNBANNED = 26
++        const val CHAT_MESSAGE = 27
++    }
++}
+\ No newline at end of file
+diff --git a/src/android/app/src/main/jni/CMakeLists.txt b/src/android/app/src/main/jni/CMakeLists.txt
+index f2cad225a1..dea511a167 100644
+--- a/src/android/app/src/main/jni/CMakeLists.txt
++++ b/src/android/app/src/main/jni/CMakeLists.txt
+@@ -22,6 +22,8 @@ add_library(citra-android SHARED
+     game_info.cpp
+     id_cache.cpp
+     id_cache.h
++    multiplayer.cpp
++    multiplayer.h
+     native.cpp
+     ndk_motion.cpp
+     ndk_motion.h
+diff --git a/src/android/app/src/main/jni/android_common/android_common.cpp b/src/android/app/src/main/jni/android_common/android_common.cpp
+index dedd33151f..29351a4e96 100644
+--- a/src/android/app/src/main/jni/android_common/android_common.cpp
++++ b/src/android/app/src/main/jni/android_common/android_common.cpp
+@@ -30,3 +30,12 @@ jstring ToJString(JNIEnv* env, std::string_view str) {
+     return env->NewString(reinterpret_cast<const jchar*>(converted_string.data()),
+                           static_cast<jint>(converted_string.size()));
+ }
++
++jobjectArray ToJStringArray(JNIEnv* env, const std::vector<std::string>& strs) {
++    jobjectArray array =
++        env->NewObjectArray(strs.size(), env->FindClass("java/lang/String"), env->NewStringUTF(""));
++    for (int i = 0; i < strs.size(); ++i) {
++        env->SetObjectArrayElement(array, i, ToJString(env, strs[i]));
++    }
++    return array;
++}
+diff --git a/src/android/app/src/main/jni/android_common/android_common.h b/src/android/app/src/main/jni/android_common/android_common.h
+index a09f7bc458..95f1cda8f6 100644
+--- a/src/android/app/src/main/jni/android_common/android_common.h
++++ b/src/android/app/src/main/jni/android_common/android_common.h
+@@ -10,3 +10,4 @@
+
+ std::string GetJString(JNIEnv* env, jstring jstr);
+ jstring ToJString(JNIEnv* env, std::string_view str);
++jobjectArray ToJStringArray(JNIEnv* env, const std::vector<std::string>& strs);
+diff --git a/src/android/app/src/main/jni/emu_window/emu_window.cpp b/src/android/app/src/main/jni/emu_window/emu_window.cpp
+index b33c734f58..b3eaabf55a 100644
+--- a/src/android/app/src/main/jni/emu_window/emu_window.cpp
++++ b/src/android/app/src/main/jni/emu_window/emu_window.cpp
+@@ -66,8 +66,6 @@ EmuWindow_Android::EmuWindow_Android(ANativeWindow* surface) : host_window{surfa
+
+     window_width = ANativeWindow_getWidth(surface);
+     window_height = ANativeWindow_getHeight(surface);
+-
+-    Network::Init();
+ }
+
+ EmuWindow_Android::~EmuWindow_Android() {
+diff --git a/src/android/app/src/main/jni/id_cache.cpp b/src/android/app/src/main/jni/id_cache.cpp
+index 8bc0f976eb..24b1bab7a4 100644
+--- a/src/android/app/src/main/jni/id_cache.cpp
++++ b/src/android/app/src/main/jni/id_cache.cpp
+@@ -13,6 +13,7 @@
+ #include "jni/applets/swkbd.h"
+ #include "jni/camera/still_image_camera.h"
+ #include "jni/id_cache.h"
++#include "multiplayer.h"
+
+ #include <jni.h>
+
+@@ -31,6 +32,8 @@ static jmethodID s_portrait_screen_layout;
+ static jmethodID s_exit_emulation_activity;
+ static jmethodID s_request_camera_permission;
+ static jmethodID s_request_mic_permission;
++static jmethodID s_add_netplay_message;
++static jmethodID s_clear_chat;
+
+ static jclass s_cheat_class;
+ static jfieldID s_cheat_pointer;
+@@ -107,6 +110,14 @@ jmethodID GetRequestMicPermission() {
+     return s_request_mic_permission;
+ }
+
++jmethodID GetAddNetPlayMessage() {
++    return s_add_netplay_message;
++}
++
++jmethodID ClearChat() {
++    return s_clear_chat;
++}
++
+ jclass GetCheatClass() {
+     return s_cheat_class;
+ }
+@@ -183,6 +194,10 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
+         env->GetStaticMethodID(s_native_library_class, "requestCameraPermission", "()Z");
+     s_request_mic_permission =
+         env->GetStaticMethodID(s_native_library_class, "requestMicPermission", "()Z");
++    s_add_netplay_message = env->GetStaticMethodID(s_native_library_class, "addNetPlayMessage",
++                                                   "(ILjava/lang/String;)V");
++    s_clear_chat = env->GetStaticMethodID(s_native_library_class, "clearChat", "()V");
++
+     env->DeleteLocalRef(native_library_class);
+
+     // Initialize Cheat
+@@ -282,6 +297,7 @@ void JNI_OnUnload(JavaVM* vm, void* reserved) {
+         env->DeleteGlobalRef(object);
+     }
+
++    AndroidMultiplayer::NetworkShutdown();
+     MiiSelector::CleanupJNI(env);
+     SoftwareKeyboard::CleanupJNI(env);
+     Camera::StillImage::CleanupJNI(env);
+diff --git a/src/android/app/src/main/jni/id_cache.h b/src/android/app/src/main/jni/id_cache.h
+index 71a1cb67cc..4001efe1d4 100644
+--- a/src/android/app/src/main/jni/id_cache.h
++++ b/src/android/app/src/main/jni/id_cache.h
+@@ -31,6 +31,9 @@ jmethodID GetPortraitScreenLayout();
+ jmethodID GetExitEmulationActivity();
+ jmethodID GetRequestCameraPermission();
+ jmethodID GetRequestMicPermission();
++jmethodID GetAddNetPlayMessage();
++jmethodID ClearChat();
++
+
+ jclass GetCheatClass();
+ jfieldID GetCheatPointer();
+diff --git a/src/android/app/src/main/jni/multiplayer.cpp b/src/android/app/src/main/jni/multiplayer.cpp
+new file mode 100644
+index 0000000000..8b26b10239
+--- /dev/null
++++ b/src/android/app/src/main/jni/multiplayer.cpp
+@@ -0,0 +1,375 @@
++// Copyright 2024 Mandarine Project
++// Licensed under GPLv2 or any later version
++// Refer to the license.txt file included.
++
++#include "id_cache.h"
++#include "multiplayer.h"
++#include "jni/android_common/android_common.h"
++#include "core/core.h"
++#include "common/logging/log.h"
++#include <thread>
++#include <chrono>
++#include <network/network_settings.h>
++#include "network/announce_multiplayer_session.h"
++#include "core/hle/service/cfg/cfg.h"
++
++
++AndroidMultiplayer::AndroidMultiplayer(Core::System& system_,
++                                       std::shared_ptr<Network::AnnounceMultiplayerSession> session)
++    : system{system_}, announce_multiplayer_session(session) {}
++
++AndroidMultiplayer::~AndroidMultiplayer() = default;
++
++
++void AndroidMultiplayer::AddNetPlayMessage(jint type, jstring msg) {
++    IDCache::GetEnvForThread()->CallStaticVoidMethod(IDCache::GetNativeLibraryClass(),
++                                                     IDCache::GetAddNetPlayMessage(), type, msg);
++}
++
++void AndroidMultiplayer::AddNetPlayMessage(int type, const std::string& msg) {
++    JNIEnv* env = IDCache::GetEnvForThread();
++    AddNetPlayMessage(type, ToJString(env, msg));
++}
++
++void AndroidMultiplayer::ClearChat() {
++    IDCache::GetEnvForThread()->CallStaticVoidMethod(IDCache::GetNativeLibraryClass(),
++                                                     IDCache::ClearChat());
++}
++
++
++bool AndroidMultiplayer::NetworkInit() {
++    bool result = Network::Init();
++
++    if (!result) {
++        return false;
++    }
++
++    if (auto member = Network::GetRoomMember().lock()) {
++        // register the network structs to use in slots and signals
++        member->BindOnStateChanged([this](const Network::RoomMember::State& state) {
++            if (state == Network::RoomMember::State::Joined ||
++                state == Network::RoomMember::State::Moderator) {
++                NetPlayStatus status;
++                std::string msg;
++                switch (state) {
++                    case Network::RoomMember::State::Joined:
++                        status = NetPlayStatus::ROOM_JOINED;
++                        break;
++                    case Network::RoomMember::State::Moderator:
++                        status = NetPlayStatus::ROOM_MODERATOR;
++                        break;
++                    default:
++                        return;
++                }
++                AddNetPlayMessage(static_cast<int>(status), msg);
++            }
++        });
++        member->BindOnError([this](const Network::RoomMember::Error& error) {
++            NetPlayStatus status;
++            std::string msg;
++            switch (error) {
++                case Network::RoomMember::Error::LostConnection:
++                    status = NetPlayStatus::LOST_CONNECTION;
++                    break;
++                case Network::RoomMember::Error::HostKicked:
++                    status = NetPlayStatus::HOST_KICKED;
++                    break;
++                case Network::RoomMember::Error::UnknownError:
++                    status = NetPlayStatus::UNKNOWN_ERROR;
++                    break;
++                case Network::RoomMember::Error::NameCollision:
++                    status = NetPlayStatus::NAME_COLLISION;
++                    break;
++                case Network::RoomMember::Error::MacCollision:
++                    status = NetPlayStatus::MAC_COLLISION;
++                    break;
++                case Network::RoomMember::Error::WrongVersion:
++                    status = NetPlayStatus::WRONG_VERSION;
++                    break;
++                case Network::RoomMember::Error::WrongPassword:
++                    status = NetPlayStatus::WRONG_PASSWORD;
++                    break;
++                case Network::RoomMember::Error::CouldNotConnect:
++                    status = NetPlayStatus::COULD_NOT_CONNECT;
++                    break;
++                case Network::RoomMember::Error::RoomIsFull:
++                    status = NetPlayStatus::ROOM_IS_FULL;
++                    break;
++                case Network::RoomMember::Error::HostBanned:
++                    status = NetPlayStatus::HOST_BANNED;
++                    break;
++                case Network::RoomMember::Error::PermissionDenied:
++                    status = NetPlayStatus::PERMISSION_DENIED;
++                    break;
++                case Network::RoomMember::Error::NoSuchUser:
++                    status = NetPlayStatus::NO_SUCH_USER;
++                    break;
++                case Network::RoomMember::Error::ConsoleIdCollision:
++                    status = NetPlayStatus::CONSOLE_ID_COLLISION;
++                    break;
++            }
++            AddNetPlayMessage(static_cast<int>(status), msg);
++        });
++        member->BindOnStatusMessageReceived([this](const Network::StatusMessageEntry& status_message) {
++            NetPlayStatus status = NetPlayStatus::NO_ERROR;
++            std::string msg(status_message.nickname);
++            switch (status_message.type) {
++                case Network::IdMemberJoin:
++                    status = NetPlayStatus::MEMBER_JOIN;
++                    break;
++                case Network::IdMemberLeave:
++                    status = NetPlayStatus::MEMBER_LEAVE;
++                    break;
++                case Network::IdMemberKicked:
++                    status = NetPlayStatus::MEMBER_KICKED;
++                    break;
++                case Network::IdMemberBanned:
++                    status = NetPlayStatus::MEMBER_BANNED;
++                    break;
++                case Network::IdAddressUnbanned:
++                    status = NetPlayStatus::ADDRESS_UNBANNED;
++                    break;
++            }
++            AddNetPlayMessage(static_cast<int>(status), msg);
++        });
++        member->BindOnChatMessageRecieved([this](const Network::ChatEntry& chat) {
++            NetPlayStatus status = NetPlayStatus::CHAT_MESSAGE;
++            std::string msg(chat.nickname);
++            msg += ": ";
++            msg += chat.message;
++            AddNetPlayMessage(static_cast<int>(status), msg);
++        });
++    }
++
++    return true;
++}
++
++NetPlayStatus AndroidMultiplayer::NetPlayCreateRoom(const std::string& ipaddress, int port,
++                              const std::string& username, const std::string& preferedGameName, const u64 &preferedGameId, const std::string& password,
++                              const std::string& room_name, int max_players) {
++
++
++    auto member = Network::GetRoomMember().lock();
++    if (!member) {
++        return NetPlayStatus::NETWORK_ERROR;
++    }
++
++    if (member->GetState() == Network::RoomMember::State::Joining || member->IsConnected()) {
++        return NetPlayStatus::ALREADY_IN_ROOM;
++    }
++
++    auto room = Network::GetRoom().lock();
++    if (!room) {
++        return NetPlayStatus::NETWORK_ERROR;
++    }
++
++    if (room_name.length() < 3 || room_name.length() > 20) {
++        return NetPlayStatus::CREATE_ROOM_ERROR;
++    }
++
++    if (!room->Create(room_name, "", ipaddress, port, password,
++                     std::min(max_players, 16), NetSettings::values.citra_username, preferedGameName, preferedGameId, std::make_unique<Network::VerifyUser::NullBackend>(), {})) {
++        return NetPlayStatus::CREATE_ROOM_ERROR;
++    }
++
++    // Failsafe timer to avoid joining before creation
++    std::this_thread::sleep_for(std::chrono::milliseconds(100));
++
++    member->Join(username, Service::CFG::GetConsoleIdHash(system), ipaddress.c_str(), port, 0, Network::NoPreferredMac, password);
++
++    // Failsafe timer to avoid joining before creation
++    for (int i = 0; i < 5; i++) {
++        std::this_thread::sleep_for(std::chrono::milliseconds(100));
++        if (member->GetState() == Network::RoomMember::State::Joined ||
++            member->GetState() == Network::RoomMember::State::Moderator) {
++            return NetPlayStatus::NO_ERROR;
++        }
++    }
++
++    // If join failed while room is created, clean up the room
++    room->Destroy();
++    return NetPlayStatus::CREATE_ROOM_ERROR;
++}
++
++NetPlayStatus AndroidMultiplayer::NetPlayJoinRoom(const std::string& ipaddress, int port,
++                            const std::string& username, const std::string& password) {
++    auto member = Network::GetRoomMember().lock();
++    if (!member) {
++        return NetPlayStatus::NETWORK_ERROR;
++    }
++
++    if (member->GetState() == Network::RoomMember::State::Joining || member->IsConnected()) {
++        return NetPlayStatus::ALREADY_IN_ROOM;
++    }
++
++    member->Join(username, Service::CFG::GetConsoleIdHash(system), ipaddress.c_str(), port, 0, Network::NoPreferredMac, password);
++
++    // Wait a bit for the connection and join process to complete
++    std::this_thread::sleep_for(std::chrono::milliseconds(500));
++
++    if (member->GetState() == Network::RoomMember::State::Joined ||
++        member->GetState() == Network::RoomMember::State::Moderator) {
++        return NetPlayStatus::NO_ERROR;
++    }
++
++    if (!member->IsConnected()) {
++        return NetPlayStatus::COULD_NOT_CONNECT;
++    }
++
++    return NetPlayStatus::WRONG_PASSWORD;
++}
++
++void AndroidMultiplayer::NetPlaySendMessage(const std::string& msg) {
++    if (auto room = Network::GetRoomMember().lock()) {
++        if (room->GetState() != Network::RoomMember::State::Joined &&
++            room->GetState() != Network::RoomMember::State::Moderator) {
++
++            return;
++        }
++        room->SendChatMessage(msg);
++    }
++}
++
++void AndroidMultiplayer::NetPlayKickUser(const std::string& username) {
++    if (auto room = Network::GetRoomMember().lock()) {
++        auto members = room->GetMemberInformation();
++        auto it = std::find_if(members.begin(), members.end(),
++                               [&username](const Network::RoomMember::MemberInformation& member) {
++                                   return member.nickname == username;
++                               });
++        if (it != members.end()) {
++            room->SendModerationRequest(Network::RoomMessageTypes::IdModKick, username);
++        }
++    }
++}
++
++void AndroidMultiplayer::NetPlayBanUser(const std::string& username) {
++    if (auto room = Network::GetRoomMember().lock()) {
++        auto members = room->GetMemberInformation();
++        auto it = std::find_if(members.begin(), members.end(),
++                               [&username](const Network::RoomMember::MemberInformation& member) {
++                                   return member.nickname == username;
++                               });
++        if (it != members.end()) {
++            room->SendModerationRequest(Network::RoomMessageTypes::IdModBan, username);
++        }
++    }
++}
++
++void AndroidMultiplayer::NetPlayUnbanUser(const std::string& username) {
++    if (auto room = Network::GetRoomMember().lock()) {
++        room->SendModerationRequest(Network::RoomMessageTypes::IdModUnban, username);
++    }
++}
++
++std::vector<std::string> AndroidMultiplayer::NetPlayRoomInfo() {
++    std::vector<std::string> info_list;
++    if (auto room = Network::GetRoomMember().lock()) {
++        auto members = room->GetMemberInformation();
++        if (!members.empty()) {
++            // name and max players
++            auto room_info = room->GetRoomInformation();
++            info_list.push_back(room_info.name + "|" + std::to_string(room_info.member_slots));
++            // all members
++            for (const auto& member : members) {
++                info_list.push_back(member.nickname);
++            }
++        }
++    }
++    return info_list;
++}
++
++bool AndroidMultiplayer::NetPlayIsJoined() {
++    auto member = Network::GetRoomMember().lock();
++    if (!member) {
++        return false;
++    }
++
++    return (member->GetState() == Network::RoomMember::State::Joined ||
++            member->GetState() == Network::RoomMember::State::Moderator);
++}
++
++bool AndroidMultiplayer::NetPlayIsHostedRoom() {
++    if (auto room = Network::GetRoom().lock()) {
++        return room->GetState() == Network::Room::State::Open;
++    }
++    return false;
++}
++
++void AndroidMultiplayer::NetPlayLeaveRoom() {
++    if (auto room = Network::GetRoom().lock()) {
++        // if you are in a room, leave it
++        if (auto member = Network::GetRoomMember().lock()) {
++            member->Leave();
++        }
++
++        ClearChat();
++
++        // if you are hosting a room, also stop hosting
++        if (room->GetState() == Network::Room::State::Open) {
++            room->Destroy();
++        }
++    }
++}
++
++void AndroidMultiplayer::NetworkShutdown() {
++    Network::Shutdown();
++}
++
++bool AndroidMultiplayer::NetPlayIsModerator() {
++    auto member = Network::GetRoomMember().lock();
++    if (!member) {
++        return false;
++    }
++    return member->GetState() == Network::RoomMember::State::Moderator;
++}
++
++std::vector<std::string> AndroidMultiplayer::NetPlayGetPublicRooms() {
++    std::vector<std::string> room_list;
++
++    if (auto session = announce_multiplayer_session.lock()) {
++        auto rooms = session->GetRoomList();
++        for (const auto &room: rooms) {
++            room_list.push_back(room.name + "|" +
++                                (room.has_password ? "1" : "0") + "|" +
++                                std::to_string(room.max_player) + "|" +
++                                room.ip + "|" +
++                                std::to_string(room.port) + "|" +
++                                room.description + "|" +
++                                room.owner + "|" +
++                                std::to_string(room.preferred_game_id) + "|" +
++                                room.preferred_game);
++
++
++            for (const auto &member: room.members) {
++                room_list.push_back("MEMBER|" + room.name + "|" +
++                                    member.username + "|" +
++                                    member.nickname + "|" +
++                                    std::to_string(member.game_id) + "|" +
++                                    member.game_name);
++            }
++        }
++
++    }
++    return room_list;
++
++}
++
++
++std::vector<std::string> AndroidMultiplayer::NetPlayGetBanList() {
++    std::vector<std::string> ban_list;
++    if (auto room = Network::GetRoom().lock()) {
++        auto [username_bans, ip_bans] = room->GetBanList();
++
++        // Add username bans
++        for (const auto& username : username_bans) {
++            ban_list.push_back(username);
++        }
++
++        // Add IP bans
++        for (const auto& ip : ip_bans) {
++            ban_list.push_back(ip);
++        }
++    }
++    return ban_list;
++}
+diff --git a/src/android/app/src/main/jni/multiplayer.h b/src/android/app/src/main/jni/multiplayer.h
+new file mode 100644
+index 0000000000..81d8a19582
+--- /dev/null
++++ b/src/android/app/src/main/jni/multiplayer.h
+@@ -0,0 +1,104 @@
++// Copyright 2024 Mandarine Project
++// Licensed under GPLv2 or any later version
++// Refer to the license.txt file included.
++
++#pragma once
++#include <common/common_types.h>
++#include <string>
++#include <vector>
++#include <network/network.h>
++
++namespace Core {
++    class System;
++}
++
++namespace Network {
++    class AnnounceMultiplayerSession;
++}
++
++enum class NetPlayStatus : s32 {
++    NO_ERROR,
++
++    NETWORK_ERROR,
++    LOST_CONNECTION,
++    NAME_COLLISION,
++    MAC_COLLISION,
++    CONSOLE_ID_COLLISION,
++    WRONG_VERSION,
++    WRONG_PASSWORD,
++    COULD_NOT_CONNECT,
++    ROOM_IS_FULL,
++    HOST_BANNED,
++    PERMISSION_DENIED,
++    NO_SUCH_USER,
++    ALREADY_IN_ROOM,
++    CREATE_ROOM_ERROR,
++    HOST_KICKED,
++    UNKNOWN_ERROR,
++
++    ROOM_UNINITIALIZED,
++    ROOM_IDLE,
++    ROOM_JOINING,
++    ROOM_JOINED,
++    ROOM_MODERATOR,
++
++    MEMBER_JOIN,
++    MEMBER_LEAVE,
++    MEMBER_KICKED,
++    MEMBER_BANNED,
++    ADDRESS_UNBANNED,
++
++    CHAT_MESSAGE,
++};
++
++class AndroidMultiplayer {
++public:
++    explicit AndroidMultiplayer(Core::System& system,
++                                std::shared_ptr<Network::AnnounceMultiplayerSession> session);
++    ~AndroidMultiplayer();
++
++    bool NetworkInit();
++
++    void AddNetPlayMessage(int status, const std::string& msg);
++    void AddNetPlayMessage(jint type, jstring msg);
++
++    void ClearChat();
++
++    NetPlayStatus NetPlayCreateRoom(const std::string &ipaddress, int port,
++                                    const std::string &username, const std::string &preferedGameName,const u64 &preferedGameId , const std::string &password,
++                                    const std::string &room_name, int max_players);
++
++    NetPlayStatus NetPlayJoinRoom(const std::string &ipaddress, int port,
++                                  const std::string &username, const std::string &password);
++
++    std::vector<std::string> NetPlayRoomInfo();
++
++    bool NetPlayIsJoined();
++
++    bool NetPlayIsHostedRoom();
++
++    bool NetPlayIsModerator();
++
++    void NetPlaySendMessage(const std::string &msg);
++
++    void NetPlayKickUser(const std::string &username);
++
++    void NetPlayBanUser(const std::string &username);
++
++    void NetPlayLeaveRoom();
++
++    static void NetworkShutdown();
++
++    std::vector<std::string> NetPlayGetBanList();
++
++    void NetPlayUnbanUser(const std::string &username);
++
++    std::vector<std::string> NetPlayGetPublicRooms();
++
++private:
++    Core::System& system;
++    static std::unique_ptr<Network::VerifyUser::Backend> CreateVerifyBackend(bool use_validation) ;
++    std::weak_ptr<Network::AnnounceMultiplayerSession> announce_multiplayer_session;
++
++
++};
+diff --git a/src/android/app/src/main/jni/native.cpp b/src/android/app/src/main/jni/native.cpp
+index 7bc1844c95..f3666cf579 100644
+--- a/src/android/app/src/main/jni/native.cpp
++++ b/src/android/app/src/main/jni/native.cpp
+@@ -46,6 +46,7 @@
+ #include "jni/camera/ndk_camera.h"
+ #include "jni/camera/still_image_camera.h"
+ #include "jni/config.h"
++#include "network/announce_multiplayer_session.h"
+ #ifdef ENABLE_OPENGL
+ #include "jni/emu_window/emu_window_gl.h"
+ #endif
+@@ -59,6 +60,8 @@
+ #include "video_core/debug_utils/debug_utils.h"
+ #include "video_core/gpu.h"
+ #include "video_core/renderer_base.h"
++#include "multiplayer.h"
++
+
+ #if defined(ENABLE_VULKAN) && CITRA_ARCH(arm64)
+ #include <adrenotools/driver.h>
+@@ -78,6 +81,12 @@ std::mutex paused_mutex;
+ std::mutex running_mutex;
+ std::condition_variable running_cv;
+
++//Abdroid Multiplayer which can be initialized with parameters
++std::unique_ptr<AndroidMultiplayer> multiplayer{nullptr};
++std::shared_ptr<Network::AnnounceMultiplayerSession> announce_multiplayer_session;
++
++
++
+ } // Anonymous namespace
+
+ static jobject ToJavaCoreError(Core::System::ResultStatus result) {
+@@ -709,6 +718,99 @@ void Java_org_citra_citra_1emu_NativeLibrary_removeAmiibo([[maybe_unused]] JNIEn
+     nfc->RemoveAmiibo();
+ }
+
++// init multiplayer class
++JNIEXPORT void JNICALL Java_org_citra_citra_1emu_NativeLibrary_initMultiplayer(
++    JNIEnv* env, [[maybe_unused]] jobject obj) {
++    if (multiplayer) {
++        return;
++    }
++
++    announce_multiplayer_session = std::make_shared<Network::AnnounceMultiplayerSession>();
++
++    multiplayer = std::make_unique<AndroidMultiplayer>(Core::System::GetInstance(), announce_multiplayer_session);
++    multiplayer->NetworkInit();
++}
++
++JNIEXPORT jobjectArray JNICALL
++Java_org_citra_citra_1emu_utils_NetPlayManager_netPlayGetPublicRooms(
++        JNIEnv* env, [[maybe_unused]] jobject obj) {
++    return ToJStringArray(env, multiplayer->NetPlayGetPublicRooms());
++}
++
++JNIEXPORT jint JNICALL Java_org_citra_citra_1emu_utils_NetPlayManager_netPlayCreateRoom(
++    JNIEnv* env, [[maybe_unused]] jobject obj, jstring ipaddress, jint port,
++    jstring username, jstring preferedGameName, jlong preferedGameId, jstring password, jstring room_name, jint max_players) {
++    return static_cast<jint>(
++            multiplayer->NetPlayCreateRoom(GetJString(env, ipaddress), port,
++                         GetJString(env, username), GetJString(env, preferedGameName), preferedGameId,
++                         GetJString(env, password),
++                         GetJString(env, room_name), max_players));
++}
++
++JNIEXPORT jint JNICALL Java_org_citra_citra_1emu_utils_NetPlayManager_netPlayJoinRoom(
++    JNIEnv* env, [[maybe_unused]] jobject obj, jstring ipaddress, jint port,
++    jstring username, jstring password) {
++    return static_cast<jint>(
++        multiplayer->NetPlayJoinRoom(GetJString(env, ipaddress), port,
++                       GetJString(env, username), GetJString(env, password)));
++}
++
++JNIEXPORT jobjectArray JNICALL
++Java_org_citra_citra_1emu_utils_NetPlayManager_netPlayRoomInfo(
++    JNIEnv* env, [[maybe_unused]] jobject obj) {
++    return ToJStringArray(env, multiplayer->NetPlayRoomInfo());
++}
++
++JNIEXPORT jboolean JNICALL
++Java_org_citra_citra_1emu_utils_NetPlayManager_netPlayIsJoined(
++    [[maybe_unused]] JNIEnv* env, [[maybe_unused]] jobject obj) {
++    return multiplayer->NetPlayIsJoined();
++}
++
++JNIEXPORT jboolean JNICALL
++Java_org_citra_citra_1emu_utils_NetPlayManager_netPlayIsHostedRoom(
++    [[maybe_unused]] JNIEnv* env, [[maybe_unused]] jobject obj) {
++    return multiplayer->NetPlayIsHostedRoom();
++}
++
++JNIEXPORT void JNICALL
++Java_org_citra_citra_1emu_utils_NetPlayManager_netPlaySendMessage(
++    JNIEnv* env, [[maybe_unused]] jobject obj, jstring msg) {
++    multiplayer->NetPlaySendMessage(GetJString(env, msg));
++}
++
++JNIEXPORT void JNICALL Java_org_citra_citra_1emu_utils_NetPlayManager_netPlayKickUser(
++    JNIEnv* env, [[maybe_unused]] jobject obj, jstring username) {
++    multiplayer->NetPlayKickUser(GetJString(env, username));
++}
++
++JNIEXPORT void JNICALL Java_org_citra_citra_1emu_utils_NetPlayManager_netPlayLeaveRoom(
++    [[maybe_unused]] JNIEnv* env, [[maybe_unused]] jobject obj) {
++    multiplayer->NetPlayLeaveRoom();
++}
++
++JNIEXPORT jboolean JNICALL
++Java_org_citra_citra_1emu_utils_NetPlayManager_netPlayIsModerator(
++    [[maybe_unused]] JNIEnv* env, [[maybe_unused]] jobject obj) {
++    return multiplayer->NetPlayIsModerator();
++}
++
++JNIEXPORT jobjectArray JNICALL
++Java_org_citra_citra_1emu_utils_NetPlayManager_netPlayGetBanList(
++    JNIEnv* env, [[maybe_unused]] jobject obj) {
++    return ToJStringArray(env, multiplayer->NetPlayGetBanList());
++}
++
++JNIEXPORT void JNICALL Java_org_citra_citra_1emu_utils_NetPlayManager_netPlayBanUser(
++    JNIEnv* env, [[maybe_unused]] jobject obj, jstring username) {
++    multiplayer->NetPlayBanUser(GetJString(env, username));
++}
++
++JNIEXPORT void JNICALL Java_org_citra_citra_1emu_utils_NetPlayManager_netPlayUnbanUser(
++    JNIEnv* env, [[maybe_unused]] jobject obj, jstring username) {
++    multiplayer->NetPlayUnbanUser(GetJString(env, username));
++}
++
+ JNIEXPORT jobject JNICALL Java_org_citra_citra_1emu_utils_CiaInstallWorker_installCIA(
+     JNIEnv* env, jobject jobj, jstring jpath) {
+     std::string path = GetJString(env, jpath);
+diff --git a/src/android/app/src/main/res/drawable/ic_chat.xml b/src/android/app/src/main/res/drawable/ic_chat.xml
+new file mode 100644
+index 0000000000..e0efa062b8
+--- /dev/null
++++ b/src/android/app/src/main/res/drawable/ic_chat.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:fillColor="@android:color/white"
++        android:pathData="M20,2L4,2c-1.1,0 -1.99,0.9 -1.99,2L2,22l4,-4h14c1.1,0 2,-0.9 2,-2L22,4c0,-1.1 -0.9,-2 -2,-2zM18,14L6,14v-2h12v2zM18,11L6,11L6,9h12v2zM18,8L6,8L6,6h12v2z"/>
++</vector>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/drawable/ic_ip.xml b/src/android/app/src/main/res/drawable/ic_ip.xml
+new file mode 100644
+index 0000000000..19f719b392
+--- /dev/null
++++ b/src/android/app/src/main/res/drawable/ic_ip.xml
+@@ -0,0 +1,9 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:fillColor="?attr/colorControlNormal"
++        android:pathData="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM11,19.93c-3.95,-0.49 -7,-3.85 -7,-7.93 0,-0.62 0.08,-1.21 0.21,-1.79L9,15v1c0,1.1 0.9,2 2,2v1.93zM17.9,17.39c-0.26,-0.81 -1,-1.39 -1.9,-1.39h-1v-3c0,-0.55 -0.45,-1 -1,-1L8,12v-2h2c0.55,0 1,-0.45 1,-1L11,7h2c1.1,0 2,-0.9 2,-2v-0.41c2.93,1.19 5,4.06 5,7.41 0,2.08 -0.8,3.97 -2.1,5.39z"/>
++</vector>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/drawable/ic_joined.xml b/src/android/app/src/main/res/drawable/ic_joined.xml
+new file mode 100644
+index 0000000000..c86e96da44
+--- /dev/null
++++ b/src/android/app/src/main/res/drawable/ic_joined.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:fillColor="@android:color/white"
++        android:pathData="M16,11c1.66,0 2.99,-1.34 2.99,-3S17.66,5 16,5c-1.66,0 -3,1.34 -3,3s1.34,3 3,3zM8,11c1.66,0 2.99,-1.34 2.99,-3S9.66,5 8,5C6.34,5 5,6.34 5,8s1.34,3 3,3zM8,13c-2.33,0 -7,1.17 -7,3.5L1,19h14v-2.5c0,-2.33 -4.67,-3.5 -7,-3.5zM16,13c-0.29,0 -0.62,0.02 -0.97,0.05 1.16,0.84 1.97,1.97 1.97,3.45L17,19h6v-2.5c0,-2.33 -4.67,-3.5 -7,-3.5z"/>
++</vector>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/drawable/ic_more_vert.xml b/src/android/app/src/main/res/drawable/ic_more_vert.xml
+new file mode 100644
+index 0000000000..9be1f70a4c
+--- /dev/null
++++ b/src/android/app/src/main/res/drawable/ic_more_vert.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:fillColor="?attr/colorControlNormal"
++        android:pathData="M12,8c1.1,0 2,-0.9 2,-2s-0.9,-2 -2,-2 -2,0.9 -2,2 0.9,2 2,2zM12,10c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 -0.9,-2 -2,-2zM12,16c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 -0.9,-2 -2,-2z"/>
++</vector>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/drawable/ic_multiplayer.xml b/src/android/app/src/main/res/drawable/ic_multiplayer.xml
+new file mode 100644
+index 0000000000..cf3e49fcca
+--- /dev/null
++++ b/src/android/app/src/main/res/drawable/ic_multiplayer.xml
+@@ -0,0 +1,9 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M16,11c1.66,0 2.99,-1.34 2.99,-3S17.66,5 16,5c-1.66,0 -3,1.34 -3,3s1.34,3 3,3zM8,11c1.66,0 2.99,-1.34 2.99,-3S9.66,5 8,5C6.34,5 5,6.34 5,8s1.34,3 3,3zM8,13c-2.33,0 -7,1.17 -7,3.5L1,19h14v-2.5c0,-2.33 -4.67,-3.5 -7,-3.5zM16,13c-0.29,0 -0.62,0.02 -0.97,0.05 1.16,0.84 1.97,1.97 1.97,3.45L17,19h6v-2.5c0,-2.33 -4.67,-3.5 -7,-3.5z"/>
++</vector>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/drawable/ic_network.xml b/src/android/app/src/main/res/drawable/ic_network.xml
+index 91559b9880..eef8a0b43d 100644
+--- a/src/android/app/src/main/res/drawable/ic_network.xml
++++ b/src/android/app/src/main/res/drawable/ic_network.xml
+@@ -1,9 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="24dp"
+     android:height="24dp"
+-    android:viewportWidth="960"
+-    android:viewportHeight="960">
++    android:viewportWidth="24"
++    android:viewportHeight="24">
+     <path
+-        android:fillColor="?attr/colorControlNormal"
+-        android:pathData="M200,840q-33,0 -56.5,-23.5T120,760q0,-33 23.5,-56.5T200,680q33,0 56.5,23.5T280,760q0,33 -23.5,56.5T200,840ZM680,840q0,-117 -44,-218.5T516,444q-76,-76 -177.5,-120T120,280v-120q142,0 265,53t216,146q93,93 146,216t53,265L680,840ZM440,840q0,-67 -25,-124.5T346,614q-44,-44 -101.5,-69T120,520v-120q92,0 171.5,34.5T431,529q60,60 94.5,139.5T560,840L440,840Z"/>
++        android:fillColor="?attr/colorPrimary"
++        android:pathData="M1,9l2,2c4.97,-4.97 13.03,-4.97 18,0l2,-2C16.93,2.93 7.08,2.93 1,9zM9,17l3,3 3,-3c-1.65,-1.66 -4.34,-1.66 -6,0zM5,13l2,2c2.76,-2.76 7.24,-2.76 10,0l2,-2C15.14,9.14 8.87,9.14 5,13z"/>
+ </vector>
+diff --git a/src/android/app/src/main/res/drawable/ic_refresh.xml b/src/android/app/src/main/res/drawable/ic_refresh.xml
+new file mode 100644
+index 0000000000..b2423822b7
+--- /dev/null
++++ b/src/android/app/src/main/res/drawable/ic_refresh.xml
+@@ -0,0 +1,10 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24"
++    android:tint="?attr/colorControlNormal">
++    <path
++        android:fillColor="@android:color/white"
++        android:pathData="M17.65,6.35C16.2,4.9 14.21,4 12,4c-4.42,0 -7.99,3.58 -7.99,8s3.57,8 7.99,8c3.73,0 6.84,-2.55 7.73,-6h-2.08c-0.82,2.33 -3.04,4 -5.65,4 -3.31,0 -6,-2.69 -6,-6s2.69,-6 6,-6c1.66,0 3.14,0.69 4.22,1.78L13,11h7V4l-2.35,2.35z"/>
++</vector>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/drawable/ic_send.xml b/src/android/app/src/main/res/drawable/ic_send.xml
+new file mode 100644
+index 0000000000..fa20740577
+--- /dev/null
++++ b/src/android/app/src/main/res/drawable/ic_send.xml
+@@ -0,0 +1,9 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:fillColor="?attr/colorControlNormal"
++        android:pathData="M2.01,21L23,12 2.01,3 2,10l15,2 -15,2z"/>
++</vector>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/drawable/ic_system.xml b/src/android/app/src/main/res/drawable/ic_system.xml
+new file mode 100644
+index 0000000000..63fd22d7d6
+--- /dev/null
++++ b/src/android/app/src/main/res/drawable/ic_system.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:fillColor="@android:color/white"
++        android:pathData="M21,3L3,3c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h5v2h8v-2h5c1.1,0 1.99,-0.9 1.99,-2L23,5c0,-1.1 -0.9,-2 -2,-2zM21,17L3,17L3,5h18v12z"/>
++</vector>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/drawable/ic_user.xml b/src/android/app/src/main/res/drawable/ic_user.xml
+new file mode 100644
+index 0000000000..606e966ca9
+--- /dev/null
++++ b/src/android/app/src/main/res/drawable/ic_user.xml
+@@ -0,0 +1,9 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:fillColor="?attr/colorControlNormal"
++        android:pathData="M12,12c2.21,0 4,-1.79 4,-4s-1.79,-4 -4,-4 -4,1.79 -4,4 1.79,4 4,4zM12,14c-2.67,0 -8,1.34 -8,4v2h16v-2c0,-2.66 -5.33,-4 -8,-4z"/>
++</vector>
+diff --git a/src/android/app/src/main/res/layout/dialog_ban_list.xml b/src/android/app/src/main/res/layout/dialog_ban_list.xml
+new file mode 100644
+index 0000000000..eb40827178
+--- /dev/null
++++ b/src/android/app/src/main/res/layout/dialog_ban_list.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<androidx.recyclerview.widget.RecyclerView
++    android:id="@+id/ban_list_recycler"
++    xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:padding="8dp"/>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/layout/dialog_bottom_sheet.xml b/src/android/app/src/main/res/layout/dialog_bottom_sheet.xml
+new file mode 100644
+index 0000000000..6dd10d97ba
+--- /dev/null
++++ b/src/android/app/src/main/res/layout/dialog_bottom_sheet.xml
+@@ -0,0 +1,38 @@
++<?xml version="1.0" encoding="utf-8"?>
++<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="match_parent"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    android:orientation="vertical"
++    android:gravity="center"
++    app:strokeWidth="0dp"
++    app:cardCornerRadius="24dp">
++
++    <LinearLayout
++        android:layout_width="match_parent"
++        android:layout_height="match_parent"
++        android:orientation="vertical"
++        android:gravity="center"
++        android:background="?colorSurface">
++
++        <View
++            android:layout_width="128dp"
++            android:layout_height="4dp"
++            android:layout_marginVertical="8dp"
++            android:backgroundTint="?colorSurfaceVariant" />
++
++        <androidx.core.widget.NestedScrollView
++            android:layout_width="match_parent"
++            android:layout_height="match_parent">
++
++            <LinearLayout
++                android:id="@+id/content"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:orientation="vertical" />
++
++        </androidx.core.widget.NestedScrollView>
++
++    </LinearLayout>
++
++</com.google.android.material.card.MaterialCardView>
+diff --git a/src/android/app/src/main/res/layout/dialog_chat.xml b/src/android/app/src/main/res/layout/dialog_chat.xml
+new file mode 100644
+index 0000000000..d62ef0802c
+--- /dev/null
++++ b/src/android/app/src/main/res/layout/dialog_chat.xml
+@@ -0,0 +1,55 @@
++<?xml version="1.0" encoding="utf-8"?>
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    android:orientation="vertical"
++    android:layout_width="match_parent"
++    android:layout_height="match_parent"
++    android:padding="16dp">
++
++    <TextView
++        android:id="@+id/text_title"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:text="@string/chat"
++        android:textAppearance="?attr/textAppearanceHeadline6"
++        android:gravity="center"
++        android:layout_marginBottom="16dp" />
++
++    <androidx.recyclerview.widget.RecyclerView
++        android:id="@+id/chat_recycler_view"
++        android:layout_width="match_parent"
++        android:layout_height="0dp"
++        android:layout_weight="1"
++        android:layout_marginBottom="16dp"
++        android:transcriptMode="alwaysScroll" />
++
++    <LinearLayout
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:orientation="horizontal">
++
++        <com.google.android.material.textfield.TextInputLayout
++            android:layout_width="0dp"
++            android:layout_height="wrap_content"
++            android:layout_weight="1"
++            android:hint="@string/type_message">
++
++            <com.google.android.material.textfield.TextInputEditText
++                android:id="@+id/chat_input"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:inputType="text"
++                android:imeOptions="actionSend" />
++
++        </com.google.android.material.textfield.TextInputLayout>
++
++        <ImageButton
++            android:id="@+id/send_button"
++            android:layout_width="48dp"
++            android:layout_height="48dp"
++            android:layout_gravity="bottom"
++            android:background="?attr/selectableItemBackgroundBorderless"
++            android:src="@drawable/ic_send"
++            android:contentDescription="@string/send_message" />
++    </LinearLayout>
++</LinearLayout>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/layout/dialog_lobby_browser.xml b/src/android/app/src/main/res/layout/dialog_lobby_browser.xml
+new file mode 100644
+index 0000000000..01c2dd73b0
+--- /dev/null
++++ b/src/android/app/src/main/res/layout/dialog_lobby_browser.xml
+@@ -0,0 +1,202 @@
++<?xml version="1.0" encoding="utf-8"?>
++<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    xmlns:tools="http://schemas.android.com/tools"
++    android:layout_width="match_parent"
++    android:layout_height="match_parent">
++
++    <com.google.android.material.appbar.AppBarLayout
++        android:id="@+id/appbar"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:background="@android:color/transparent"
++        android:elevation="0dp">
++
++        <LinearLayout
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:orientation="vertical"
++            app:layout_scrollFlags="scroll|enterAlways|snap">
++
++            <LinearLayout
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:orientation="horizontal"
++                android:paddingTop="16dp"
++                android:paddingHorizontal="16dp"
++                android:gravity="center_vertical">
++
++                <Space
++                    android:layout_width="48dp"
++                    android:layout_height="0dp" />
++
++                <TextView
++                    android:id="@+id/title"
++                    android:layout_width="0dp"
++                    android:layout_height="wrap_content"
++                    android:layout_weight="1"
++                    android:gravity="center"
++                    android:text="@string/multiplayer_room_browser"
++                    android:textAppearance="@style/TextAppearance.Material3.TitleLarge" />
++
++                <FrameLayout
++                    android:layout_width="48dp"
++                    android:layout_height="48dp">
++
++                    <com.google.android.material.button.MaterialButton
++                        android:id="@+id/refresh_button"
++                        style="@style/Widget.Material3.Button.IconButton"
++                        android:layout_width="match_parent"
++                        android:layout_height="match_parent"
++                        android:layout_gravity="center"
++                        app:icon="@drawable/ic_refresh" />
++
++                    <ProgressBar
++                        android:id="@+id/progress_bar"
++                        style="?android:attr/progressBarStyleSmall"
++                        android:layout_width="24dp"
++                        android:layout_height="24dp"
++                        android:layout_gravity="center"
++                        android:visibility="gone" />
++                </FrameLayout>
++            </LinearLayout>
++
++            <com.google.android.material.card.MaterialCardView
++                android:id="@+id/search_background"
++                style="?attr/materialCardViewFilledStyle"
++                android:layout_width="match_parent"
++                android:layout_height="48dp"
++                android:layout_marginHorizontal="16dp"
++                android:layout_marginTop="12dp"
++                app:cardCornerRadius="24dp">
++
++                <LinearLayout
++                    android:id="@+id/search_container"
++                    android:layout_width="match_parent"
++                    android:layout_height="match_parent"
++                    android:layout_marginStart="16dp"
++                    android:layout_marginEnd="48dp"
++                    android:orientation="horizontal">
++
++                    <ImageView
++                        android:layout_width="24dp"
++                        android:layout_height="24dp"
++                        android:layout_gravity="center_vertical"
++                        android:layout_marginEnd="16dp"
++                        android:src="@drawable/ic_search"
++                        app:tint="?attr/colorOnSurfaceVariant" />
++
++                    <EditText
++                        android:id="@+id/search_text"
++                        android:layout_width="match_parent"
++                        android:layout_height="match_parent"
++                        android:background="@android:color/transparent"
++                        android:hint="@string/multiplayer_search_public_lobbies"
++                        android:imeOptions="flagNoFullscreen"
++                        android:inputType="text"
++                        android:maxLines="1" />
++                </LinearLayout>
++
++                <ImageView
++                    android:id="@+id/clear_button"
++                    android:layout_width="24dp"
++                    android:layout_height="24dp"
++                    android:layout_gravity="center_vertical|end"
++                    android:layout_marginEnd="16dp"
++                    android:background="?attr/selectableItemBackground"
++                    android:src="@drawable/ic_clear"
++                    android:visibility="invisible"
++                    app:tint="?attr/colorOnSurfaceVariant"
++                    tools:visibility="visible" />
++            </com.google.android.material.card.MaterialCardView>
++
++            <HorizontalScrollView
++                android:id="@+id/horizontalScrollView"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:fadingEdge="horizontal"
++                android:scrollbars="none"
++                android:layout_marginVertical="8dp"
++                android:clipToPadding="false"
++                android:paddingHorizontal="16dp">
++
++                <com.google.android.material.chip.ChipGroup
++                    android:id="@+id/chip_group"
++                    android:layout_width="wrap_content"
++                    android:layout_height="wrap_content"
++                    android:clipToPadding="false"
++                    app:chipSpacingHorizontal="8dp"
++                    app:singleLine="true"
++                    app:singleSelection="true">
++
++                    <com.google.android.material.chip.Chip
++                        android:id="@+id/chip_hide_empty"
++                        style="@style/Widget.Material3.Chip.Suggestion.Elevated"
++                        android:layout_width="wrap_content"
++                        android:layout_height="wrap_content"
++                        android:text="@string/multiplayer_hide_empty_rooms"
++                        app:chipCornerRadius="16dp" />
++
++                    <com.google.android.material.chip.Chip
++                        android:id="@+id/chip_hide_full"
++                        style="@style/Widget.Material3.Chip.Suggestion.Elevated"
++                        android:layout_width="wrap_content"
++                        android:layout_height="wrap_content"
++                        android:checked="false"
++                        android:text="@string/multiplayer_hide_full_rooms"
++                        app:chipCornerRadius="16dp" />
++                </com.google.android.material.chip.ChipGroup>
++            </HorizontalScrollView>
++        </LinearLayout>
++    </com.google.android.material.appbar.AppBarLayout>
++
++    <androidx.recyclerview.widget.RecyclerView
++        android:id="@+id/room_list"
++        android:layout_width="match_parent"
++        android:layout_height="match_parent"
++        android:clipToPadding="false"
++        android:paddingBottom="16dp"
++        android:scrollbars="vertical"
++        app:layout_behavior="@string/appbar_scrolling_view_behavior" />
++
++    <LinearLayout
++        android:id="@+id/empty_view"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:layout_gravity="center"
++        android:orientation="vertical"
++        android:gravity="center"
++        android:padding="32dp"
++        android:visibility="gone">
++
++        <ImageView
++            android:layout_width="72dp"
++            android:layout_height="72dp"
++            android:layout_marginBottom="16dp"
++            android:src="@drawable/ic_refresh"
++            android:alpha="0.5"
++            app:tint="?attr/colorOnSurface" />
++
++        <TextView
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content"
++            android:text="@string/multiplayer_no_rooms_found"
++            android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
++
++        <TextView
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content"
++            android:layout_marginTop="8dp"
++            android:text="@string/multiplayer_tap_refresh_to_check_again"
++            android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
++
++        <com.google.android.material.button.MaterialButton
++            android:id="@+id/empty_refresh_button"
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content"
++            android:layout_marginTop="16dp"
++            android:text="@string/refresh"
++            app:icon="@drawable/ic_refresh" />
++    </LinearLayout>
++
++</androidx.coordinatorlayout.widget.CoordinatorLayout>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/layout/dialog_multiplayer_connect.xml b/src/android/app/src/main/res/layout/dialog_multiplayer_connect.xml
+new file mode 100644
+index 0000000000..9e391dca73
+--- /dev/null
++++ b/src/android/app/src/main/res/layout/dialog_multiplayer_connect.xml
+@@ -0,0 +1,101 @@
++<?xml version="1.0" encoding="utf-8"?>
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    android:orientation="vertical"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content">
++
++    <com.google.android.material.bottomsheet.BottomSheetDragHandleView
++        android:id="@+id/drag_handle"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content" />
++
++    <LinearLayout
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:orientation="vertical"
++        android:padding="16dp">
++
++        <TextView
++            android:id="@+id/text_title"
++            android:text="@string/multiplayer"
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:textAppearance="?attr/textAppearanceHeadline6"
++            android:gravity="center"
++            android:layout_marginTop="4dp"
++            android:textColor="?attr/colorOnSurface" />
++
++        <ImageView
++            android:layout_width="140dp"
++            android:layout_height="114dp"
++            android:layout_gravity="center"
++            android:layout_marginTop="16dp"
++            android:layout_marginBottom="24dp"
++            android:src="@drawable/ic_network"
++            app:tint="?attr/colorPrimary" />
++
++
++        <LinearLayout
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:orientation="horizontal"
++            android:layout_marginBottom="8dp"
++            android:layout_marginHorizontal="16dp">
++
++            <Space
++                android:layout_width="40dp"
++                android:layout_height="match_parent" />
++
++            <com.google.android.material.button.MaterialButton
++                android:id="@+id/btn_lobby_browser"
++                style="@style/Widget.Material3.Button"
++                android:layout_width="0dp"
++                android:layout_height="wrap_content"
++                android:layout_weight="1"
++                android:text="@string/multiplayer_public_room"
++                app:cornerRadius="16dp"
++                app:icon="@drawable/ic_search" />
++
++            <Space
++                android:layout_width="40dp"
++                android:layout_height="match_parent" />
++
++
++
++        </LinearLayout>
++
++        <LinearLayout
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:orientation="horizontal"
++            android:layout_marginHorizontal="16dp"
++            android:layout_marginBottom="8dp">
++
++            <com.google.android.material.button.MaterialButton
++                android:id="@+id/btn_join"
++                style="@style/Widget.Material3.Button.ElevatedButton"
++                android:layout_width="0dp"
++                android:layout_height="wrap_content"
++                android:layout_weight="1"
++                android:text="@string/multiplayer_join_room"
++                app:icon="@drawable/ic_install"
++                app:cornerRadius="16dp" />
++
++            <Space
++                android:layout_width="16dp"
++                android:layout_height="match_parent" />
++
++            <com.google.android.material.button.MaterialButton
++                android:id="@+id/btn_create"
++                style="@style/Widget.Material3.Button.TonalButton"
++                android:layout_width="0dp"
++                android:layout_height="wrap_content"
++                android:layout_weight="1"
++                android:text="@string/multiplayer_create_room"
++                app:icon="@drawable/ic_add"
++                app:cornerRadius="16dp" />
++        </LinearLayout>
++
++    </LinearLayout>
++</LinearLayout>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/layout/dialog_multiplayer_lobby.xml b/src/android/app/src/main/res/layout/dialog_multiplayer_lobby.xml
+new file mode 100644
+index 0000000000..19368bc2cc
+--- /dev/null
++++ b/src/android/app/src/main/res/layout/dialog_multiplayer_lobby.xml
+@@ -0,0 +1,75 @@
++<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    android:layout_width="match_parent"
++    android:layout_height="match_parent">
++
++    <LinearLayout
++        android:orientation="vertical"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content">
++
++        <com.google.android.material.bottomsheet.BottomSheetDragHandleView
++            android:id="@+id/drag_handle"
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content" />
++
++        <LinearLayout
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:orientation="vertical"
++            android:padding="16dp">
++
++            <TextView
++                android:id="@+id/text_title"
++                android:text="@string/multiplayer"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:textAppearance="?attr/textAppearanceHeadline6"
++                android:gravity="center"
++                android:layout_marginTop="4dp"
++                android:textColor="?attr/colorOnSurface" />
++
++            <androidx.recyclerview.widget.RecyclerView
++                android:id="@+id/list_multiplayer"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:layout_marginTop="16dp"
++                android:layout_marginBottom="8dp" />
++
++            <com.google.android.material.button.MaterialButton
++                android:id="@+id/btn_chat"
++                style="@style/Widget.Material3.Button.TonalButton"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:layout_marginHorizontal="16dp"
++                android:layout_marginBottom="8dp"
++                android:enabled="true"
++                android:text="@string/multiplayer_chat"
++                app:icon="@drawable/ic_chat"
++                app:cornerRadius="16dp" />
++
++            <com.google.android.material.button.MaterialButton
++                android:id="@+id/btn_moderation"
++                style="@style/Widget.Material3.Button.TonalButton"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:layout_marginHorizontal="16dp"
++                android:layout_marginBottom="8dp"
++                android:enabled="true"
++                android:text="@string/multiplayer_moderation"
++                app:cornerRadius="16dp"
++                app:icon="@drawable/ic_user" />
++
++            <com.google.android.material.button.MaterialButton
++                android:id="@+id/btn_leave"
++                style="@style/Widget.Material3.Button"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:layout_marginHorizontal="16dp"
++                android:text="@string/multiplayer_exit_room"
++                app:icon="@drawable/ic_exit"
++                app:cornerRadius="16dp" />
++
++        </LinearLayout>
++    </LinearLayout>
++</ScrollView>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/layout/dialog_multiplayer_room.xml b/src/android/app/src/main/res/layout/dialog_multiplayer_room.xml
+new file mode 100644
+index 0000000000..91ca8e7751
+--- /dev/null
++++ b/src/android/app/src/main/res/layout/dialog_multiplayer_room.xml
+@@ -0,0 +1,135 @@
++<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="match_parent">
++
++    <LinearLayout
++        android:orientation="vertical"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:padding="16dp"
++        android:clipToPadding="false"
++        android:clipChildren="false"
++        android:elevation="4dp">
++
++        <TextView
++            android:id="@+id/textTitle"
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:textAppearance="?attr/textAppearanceHeadline6"
++            android:gravity="center"
++            android:paddingBottom="8dp"
++            android:textColor="?attr/colorOnSurface" />
++
++        <com.google.android.material.textfield.TextInputLayout
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:hint="@string/multiplayer_ip_address"
++            android:padding="8dp">
++
++            <com.google.android.material.textfield.TextInputEditText
++                android:id="@+id/ip_address"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:inputType="text" />
++        </com.google.android.material.textfield.TextInputLayout>
++
++        <com.google.android.material.textfield.TextInputLayout
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:hint="@string/multiplayer_ip_port"
++            android:padding="8dp">
++
++            <com.google.android.material.textfield.TextInputEditText
++                android:id="@+id/ip_port"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:inputType="number" />
++        </com.google.android.material.textfield.TextInputLayout>
++
++        <com.google.android.material.textfield.TextInputLayout
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:hint="@string/multiplayer_username"
++            android:padding="8dp">
++
++            <com.google.android.material.textfield.TextInputEditText
++                android:id="@+id/username"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:inputType="text" />
++        </com.google.android.material.textfield.TextInputLayout>
++
++        <com.google.android.material.textfield.TextInputLayout
++            style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
++            android:id="@+id/prefered_game_name"
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:padding="8dp"
++            android:hint="@string/prefered_game_name">
++
++            <com.google.android.material.textfield.MaterialAutoCompleteTextView
++                android:id="@+id/dropdown_prefered_game_name"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:inputType="none" />
++
++        </com.google.android.material.textfield.TextInputLayout>
++
++        <com.google.android.material.textfield.TextInputLayout
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:hint="@string/multiplayer_password"
++            android:padding="8dp">
++
++            <com.google.android.material.textfield.TextInputEditText
++                android:id="@+id/password"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:inputType="textPassword" />
++        </com.google.android.material.textfield.TextInputLayout>
++
++        <com.google.android.material.textfield.TextInputLayout
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:hint="@string/multiplayer_room_name"
++            android:padding="8dp">
++
++            <com.google.android.material.textfield.TextInputEditText
++                android:id="@+id/room_name"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:inputType="text" />
++        </com.google.android.material.textfield.TextInputLayout>
++
++        <LinearLayout
++            android:id="@+id/max_players_container"
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:orientation="vertical">
++
++            <com.google.android.material.slider.Slider
++                android:id="@+id/max_players"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:layout_margin="8dp"
++                android:value="8"
++                android:valueFrom="2"
++                android:valueTo="16"
++                android:stepSize="1" />
++
++            <TextView
++                android:id="@+id/max_players_label"
++                android:layout_width="wrap_content"
++                android:layout_height="wrap_content"
++                android:layout_gravity="center"
++                android:text="@string/multiplayer_max_players_value" />
++        </LinearLayout>
++
++        <com.google.android.material.button.MaterialButton
++            android:id="@+id/btn_confirm"
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content"
++            android:text="@android:string/ok"
++            android:layout_gravity="center" />
++    </LinearLayout>
++</ScrollView>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/layout/dialog_password_input.xml b/src/android/app/src/main/res/layout/dialog_password_input.xml
+new file mode 100644
+index 0000000000..f21a63952b
+--- /dev/null
++++ b/src/android/app/src/main/res/layout/dialog_password_input.xml
+@@ -0,0 +1,21 @@
++<?xml version="1.0" encoding="utf-8"?>
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:orientation="vertical"
++    android:padding="16dp">
++
++    <com.google.android.material.textfield.TextInputLayout
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:hint="@string/multiplayer_password"
++        android:layout_marginTop="8dp">
++
++        <com.google.android.material.textfield.TextInputEditText
++            android:id="@+id/password_input"
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:inputType="textPassword" />
++
++    </com.google.android.material.textfield.TextInputLayout>
++</LinearLayout>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/layout/dropdown_item.xml b/src/android/app/src/main/res/layout/dropdown_item.xml
+new file mode 100644
+index 0000000000..1fa63d0aaf
+--- /dev/null
++++ b/src/android/app/src/main/res/layout/dropdown_item.xml
+@@ -0,0 +1,9 @@
++<?xml version="1.0" encoding="utf-8"?>
++<TextView xmlns:android="http://schemas.android.com/apk/res/android"
++    android:id="@+id/dropdown_text"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:padding="16dp"
++    android:ellipsize="end"
++    android:maxLines="1"
++    android:textAppearance="?attr/textAppearanceSubtitle1" />
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/layout/item_ban_list.xml b/src/android/app/src/main/res/layout/item_ban_list.xml
+new file mode 100644
+index 0000000000..32a1012773
+--- /dev/null
++++ b/src/android/app/src/main/res/layout/item_ban_list.xml
+@@ -0,0 +1,28 @@
++<?xml version="1.0" encoding="utf-8"?>
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:orientation="horizontal"
++    android:padding="16dp"
++    android:gravity="center_vertical">
++
++    <ImageView
++        android:id="@+id/icon"
++        android:layout_width="24dp"
++        android:layout_height="24dp"
++        android:src="@drawable/ic_user"
++        android:layout_marginEnd="16dp"/>
++
++    <TextView
++        android:id="@+id/ban_text"
++        android:layout_width="0dp"
++        android:layout_height="wrap_content"
++        android:layout_weight="1"/>
++
++    <com.google.android.material.button.MaterialButton
++        android:id="@+id/btn_unban"
++        style="@style/Widget.Material3.Button.TextButton"
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:text="@string/multiplayer_unban"/>
++</LinearLayout>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/layout/item_button_netplay.xml b/src/android/app/src/main/res/layout/item_button_netplay.xml
+new file mode 100644
+index 0000000000..494cc88786
+--- /dev/null
++++ b/src/android/app/src/main/res/layout/item_button_netplay.xml
+@@ -0,0 +1,25 @@
++<?xml version="1.0" encoding="utf-8"?>
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:orientation="horizontal"
++    android:gravity="center_vertical"
++    android:padding="8dp">
++
++    <TextView
++        android:id="@+id/item_button_netplay_name"
++        android:layout_width="0dp"
++        android:layout_height="wrap_content"
++        android:layout_weight="1"
++        android:textAppearance="?attr/textAppearanceBodyLarge" />
++
++    <ImageButton
++        android:id="@+id/item_button_more"
++        android:layout_width="48dp"
++        android:layout_height="48dp"
++        android:background="?attr/selectableItemBackgroundBorderless"
++        android:contentDescription="@string/multiplayer_more_options"
++        android:src="@drawable/ic_more_vert"
++        android:padding="12dp" />
++
++</LinearLayout>
+diff --git a/src/android/app/src/main/res/layout/item_chat_message.xml b/src/android/app/src/main/res/layout/item_chat_message.xml
+new file mode 100644
+index 0000000000..f4ce137e7f
+--- /dev/null
++++ b/src/android/app/src/main/res/layout/item_chat_message.xml
+@@ -0,0 +1,36 @@
++<?xml version="1.0" encoding="utf-8"?>
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:orientation="horizontal"
++    android:padding="8dp">
++
++    <ImageView
++        android:id="@+id/user_icon"
++        android:layout_width="24dp"
++        android:layout_height="24dp"
++        android:layout_marginEnd="8dp" />
++
++    <LinearLayout
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:orientation="vertical">
++
++        <TextView
++            android:id="@+id/username_text"
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content"
++            android:textStyle="bold" />
++
++        <TextView
++            android:id="@+id/message_text"
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content" />
++
++        <TextView
++            android:id="@+id/timestamp_text"
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content" />
++
++    </LinearLayout>
++</LinearLayout>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/layout/item_lobby_room.xml b/src/android/app/src/main/res/layout/item_lobby_room.xml
+new file mode 100644
+index 0000000000..b69090e212
+--- /dev/null
++++ b/src/android/app/src/main/res/layout/item_lobby_room.xml
+@@ -0,0 +1,113 @@
++<?xml version="1.0" encoding="utf-8"?>
++<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    xmlns:tools="http://schemas.android.com/tools"
++    style="?attr/materialCardViewFilledStyle"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:layout_marginBottom="24dp"
++    android:layout_marginHorizontal="12dp"
++    android:background="?attr/selectableItemBackground"
++    android:backgroundTint="?attr/colorSurfaceVariant"
++    android:clickable="true"
++    android:focusable="true">
++
++    <androidx.constraintlayout.widget.ConstraintLayout
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:padding="12dp">
++
++        <ImageView
++            android:id="@+id/lock_icon"
++            android:layout_width="20dp"
++            android:layout_height="20dp"
++            android:contentDescription="@string/multiplayer_password_protected"
++            android:src="@drawable/ic_lock"
++            android:visibility="gone"
++            app:layout_constraintEnd_toEndOf="parent"
++            app:layout_constraintTop_toTopOf="parent"
++            app:tint="?attr/colorOnSurface" />
++
++        <LinearLayout
++            android:layout_width="0dp"
++            android:layout_height="wrap_content"
++            android:orientation="vertical"
++            android:layout_marginEnd="8dp"
++            app:layout_constraintStart_toStartOf="parent"
++            app:layout_constraintTop_toTopOf="parent"
++            app:layout_constraintEnd_toStartOf="@id/lock_icon"
++            app:layout_constraintBottom_toBottomOf="parent">
++
++            <com.google.android.material.textview.MaterialTextView
++                android:id="@+id/room_name"
++                style="@style/TextAppearance.Material3.BodyMedium"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:textAlignment="viewStart"
++                android:textSize="16sp"
++                android:textStyle="bold"
++                tools:text="Room Name" />
++
++            <com.google.android.material.textview.MaterialTextView
++                android:id="@+id/room_owner"
++                style="@style/TextAppearance.Material3.BodySmall"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:layout_marginTop="5dp"
++                android:textAlignment="viewStart"
++                android:textSize="14sp"
++                tools:text="Hosted by: Owner" />
++
++            <LinearLayout
++                android:id="@+id/game_info"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:layout_marginTop="5dp"
++                android:orientation="horizontal">
++
++                <ImageView
++                    android:layout_width="16dp"
++                    android:layout_height="16dp"
++                    android:layout_gravity="center_vertical"
++                    android:contentDescription="@string/multiplayer_game"
++                    android:src="@drawable/ic_controller" />
++
++                <com.google.android.material.textview.MaterialTextView
++                    android:id="@+id/game_name"
++                    style="@style/TextAppearance.Material3.LabelMedium"
++                    android:layout_width="wrap_content"
++                    android:layout_height="wrap_content"
++                    android:layout_marginStart="4dp"
++                    android:ellipsize="end"
++                    android:singleLine="true"
++                    android:textStyle="bold"
++                    tools:text="Game Name" />
++            </LinearLayout>
++        </LinearLayout>
++
++        <LinearLayout
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content"
++            android:orientation="horizontal"
++            android:gravity="center_vertical"
++            app:layout_constraintBottom_toBottomOf="parent"
++            app:layout_constraintEnd_toEndOf="parent">
++
++            <ImageView
++                android:layout_width="16dp"
++                android:layout_height="16dp"
++                android:src="@drawable/ic_user"
++                android:contentDescription="@string/multiplayer_player_count"
++                app:tint="?attr/colorAccent" />
++
++            <com.google.android.material.textview.MaterialTextView
++                android:id="@+id/player_count"
++                style="@style/TextAppearance.Material3.BodyMedium"
++                android:layout_width="wrap_content"
++                android:layout_height="wrap_content"
++                android:layout_marginStart="4dp"
++                android:textColor="?attr/colorAccent"
++                tools:text="2/4" />
++        </LinearLayout>
++    </androidx.constraintlayout.widget.ConstraintLayout>
++</com.google.android.material.card.MaterialCardView>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/layout/item_netplay_button.xml b/src/android/app/src/main/res/layout/item_netplay_button.xml
+new file mode 100644
+index 0000000000..cd4017c45d
+--- /dev/null
++++ b/src/android/app/src/main/res/layout/item_netplay_button.xml
+@@ -0,0 +1,25 @@
++<?xml version="1.0" encoding="utf-8"?>
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:orientation="horizontal"
++    android:padding="16dp">
++
++    <TextView
++        android:id="@+id/item_button_netplay_name"
++        android:layout_width="0dp"
++        android:layout_height="wrap_content"
++        android:layout_weight="1"/>
++
++    <Button
++        android:id="@+id/item_button_netplay"
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:text="@string/multiplayer_kick_member"/>
++
++    <ImageButton
++        android:id="@+id/item_button_more"
++        android:layout_width="48dp"
++        android:layout_height="48dp"
++        android:src="@drawable/ic_more"/>
++</LinearLayout>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/layout/item_netplay_separator.xml b/src/android/app/src/main/res/layout/item_netplay_separator.xml
+new file mode 100644
+index 0000000000..38def7eed8
+--- /dev/null
++++ b/src/android/app/src/main/res/layout/item_netplay_separator.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<View xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="1dp"
++    android:background="?android:attr/listDivider"/>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/layout/item_netplay_text.xml b/src/android/app/src/main/res/layout/item_netplay_text.xml
+new file mode 100644
+index 0000000000..ed4be66e7b
+--- /dev/null
++++ b/src/android/app/src/main/res/layout/item_netplay_text.xml
+@@ -0,0 +1,18 @@
++<?xml version="1.0" encoding="utf-8"?>
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:orientation="horizontal"
++    android:padding="16dp">
++
++    <ImageView
++        android:id="@+id/item_icon"
++        android:layout_width="24dp"
++        android:layout_height="24dp"
++        android:layout_marginEnd="16dp"/>
++
++    <TextView
++        android:id="@+id/item_text_netplay_name"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"/>
++</LinearLayout>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/layout/item_separator_netplay.xml b/src/android/app/src/main/res/layout/item_separator_netplay.xml
+new file mode 100644
+index 0000000000..99eb7d01ac
+--- /dev/null
++++ b/src/android/app/src/main/res/layout/item_separator_netplay.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<com.google.android.material.divider.MaterialDivider
++    xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:layout_marginHorizontal="16dp"
++    android:layout_marginVertical="8dp" />
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/layout/item_text_netplay.xml b/src/android/app/src/main/res/layout/item_text_netplay.xml
+new file mode 100644
+index 0000000000..f8039d8264
+--- /dev/null
++++ b/src/android/app/src/main/res/layout/item_text_netplay.xml
+@@ -0,0 +1,24 @@
++<?xml version="1.0" encoding="utf-8"?>
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:orientation="horizontal"
++    android:padding="12dp"
++    android:gravity="center_vertical">
++
++    <ImageView
++        android:id="@+id/item_icon"
++        android:layout_width="24dp"
++        android:layout_height="24dp"
++        android:layout_marginEnd="16dp"
++        app:tint="?attr/colorPrimary" />
++
++    <TextView
++        android:id="@+id/item_text_netplay_name"
++        android:layout_width="0dp"
++        android:layout_height="wrap_content"
++        android:layout_weight="1"
++        android:textAppearance="?attr/textAppearanceBodyLarge" />
++
++</LinearLayout>
+diff --git a/src/android/app/src/main/res/menu/menu_in_game.xml b/src/android/app/src/main/res/menu/menu_in_game.xml
+index d42d59264a..c3395efa30 100644
+--- a/src/android/app/src/main/res/menu/menu_in_game.xml
++++ b/src/android/app/src/main/res/menu/menu_in_game.xml
+@@ -53,6 +53,11 @@
+         android:icon="@drawable/ic_settings"
+         android:title="@string/preferences_settings" />
+
++    <item
++        android:id="@+id/menu_multiplayer"
++        android:icon="@drawable/ic_network"
++        android:title="@string/multiplayer" />
++
+     <item
+         android:id="@+id/menu_exit"
+         android:icon="@drawable/ic_exit"
+diff --git a/src/android/app/src/main/res/menu/menu_netplay_member.xml b/src/android/app/src/main/res/menu/menu_netplay_member.xml
+new file mode 100644
+index 0000000000..a6b542d904
+--- /dev/null
++++ b/src/android/app/src/main/res/menu/menu_netplay_member.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<menu xmlns:android="http://schemas.android.com/apk/res/android">
++    <item
++        android:id="@+id/action_kick"
++        android:title="@string/multiplayer_kick_member"
++        android:enabled="false" />
++
++    <item
++        android:id="@+id/action_ban"
++        android:title="@string/multiplayer_ban"
++        android:enabled="false" />
++
++</menu>
+\ No newline at end of file
+diff --git a/src/android/app/src/main/res/values/strings.xml b/src/android/app/src/main/res/values/strings.xml
+index 4c50488ded..2e33f687b2 100644
+--- a/src/android/app/src/main/res/values/strings.xml
++++ b/src/android/app/src/main/res/values/strings.xml
+@@ -370,6 +370,7 @@
+     <string name="dont_show_again">Don\'t show again</string>
+     <string name="visibility">Visibility</string>
+     <string name="information">Information</string>
++    <string name="refresh">Refresh</string>
+
+     <!-- Add Directory Screen-->
+     <string name="select_game_folder">Select Game Folder</string>
+@@ -864,4 +865,88 @@
+     <string name="emulation_occupied_quicksave_slot">Quicksave - %1$tF %1$tR</string>
+     <string name="quickload_not_found">No Quicksave available.</string>
+
++  <!-- Multiplayer -->
++    <string name="multiplayer">Multiplayer</string>
++    <string name="multiplayer_description">Host your own game room or join an existing one to play with people</string>
++    <string name="multiplayer_room_title">Room: %1$s</string>
++    <string name="multiplayer_console_id">Console ID：%1$s</string>
++    <string name="multiplayer_create_room">Create</string>
++    <string name="multiplayer_join_room">Join</string>
++    <string name="multiplayer_public_room">Browse Public Rooms</string>
++    <string name="multiplayer_username">Username</string>
++    <string name="multiplayer_ip_address">IP Address</string>
++    <string name="multiplayer_ip_port">Port</string>
++    <string name="multiplayer_create_room_success">Room created successfully!</string>
++    <string name="multiplayer_join_room_success">Join the room successfully!</string>
++    <string name="multiplayer_create_room_failed">Failed to create room!</string>
++    <string name="multiplayer_join_room_failed">Failed to join room!</string>
++    <string name="multiplayer_input_invalid">Invalid address or name is too short!</string>
++    <string name="multiplayer_port_invalid">Invalid port!</string>
++    <string name="multiplayer_exit_room">Exit Room</string>
++    <string name="multiplayer_network_error">Network error</string>
++    <string name="multiplayer_lost_connection">Lost connection</string>
++    <string name="multiplayer_name_collision">Name collision</string>
++    <string name="multiplayer_mac_collision">Mac collision</string>
++    <string name="multiplayer_console_id_collision">Console ID collision</string>
++    <string name="multiplayer_wrong_version">Wrong version</string>
++    <string name="multiplayer_wrong_password">Wrong password</string>
++    <string name="multiplayer_could_not_connect">Could not connect</string>
++    <string name="multiplayer_room_is_full">Room is full</string>
++    <string name="multiplayer_host_banned">Host banned</string>
++    <string name="multiplayer_permission_denied">Permission denied</string>
++    <string name="multiplayer_no_such_user">No such user</string>
++    <string name="multiplayer_already_in_room">Already in room</string>
++    <string name="multiplayer_create_room_error">Create room error</string>
++    <string name="multiplayer_host_kicked">Host kicked</string>
++    <string name="multiplayer_unknown_error">unknown error</string>
++    <string name="multiplayer_room_uninitialized">Room uninitialized</string>
++    <string name="multiplayer_room_idle">Room idle</string>
++    <string name="multiplayer_room_joining">Room joining</string>
++    <string name="multiplayer_room_joined">Room joined</string>
++    <string name="multiplayer_room_moderator">Room moderator</string>
++    <string name="multiplayer_member_join">%1$s joined</string>
++    <string name="multiplayer_member_leave">%1$s left</string>
++    <string name="multiplayer_member_kicked">%1$s kicked</string>
++    <string name="multiplayer_member_banned">%1$s banned</string>
++    <string name="multiplayer_address_unbanned">address unbanned</string>
++    <string name="multiplayer_kick_member">Kick Out</string>
++    <string name="multiplayer_chat_input_hint">Send messages……</string>
++    <string name="multiplayer_password">Password</string>
++    <string name="original_button_text">Join</string>
++    <string name="disabled_button_text">Joining...</string>
++    <string name="multiplayer_room_name">Room Name</string>
++    <string name="multiplayer_room_name_invalid">Room name must be between 3 and 20 characters</string>
++    <string name="multiplayer_max_players">Max Players (16)</string>
++    <string name="multiplayer_max_players_value">Max Players: %d</string>
++    <string name="multiplayer_chat">Chat</string>
++    <string name="multiplayer_more_options">More Options</string>
++    <string name="multiplayer_ip_copied">IP Address copied to clipboard</string>
++    <string name="multiplayer_server_address">Server Address</string>
++    <string name="chat">Chat</string>
++    <string name="type_message">Type message……</string>
++    <string name="send">Send</string>
++    <string name="send_message">Send Message</string>
++    <string name="multiplayer_moderation">Moderation</string>
++    <string name="multiplayer_moderation_title">Ban List</string>
++    <string name="multiplayer_no_bans">No banned users</string>
++    <string name="multiplayer_unban_title">Unban User</string>
++    <string name="multiplayer_unban">Unban</string>
++    <string name="multiplayer_unban_message">Are you sure you want to unban %1$s?</string>
++    <string name="multiplayer_ban">Ban User</string>
++    <string name="multiplayer_room_browser">Public Rooms</string>
++    <string name="multiplayer_no_rooms_found">No public rooms found</string>
++    <string name="multiplayer_password_required">Password Required</string>
++    <string name="multiplayer_player_count">: %1$d/%2$d</string>
++    <string name="multiplayer_game">Game</string>
++    <string name="multiplayer_no_game_info">Any Game</string>
++    <string name="multiplayer_password_protected">Password protected room</string>
++    <string name="multiplayer_hide_full_rooms">Hide Full Rooms</string>
++    <string name="multiplayer_hide_empty_rooms">Hide Empty Rooms</string>
++    <string name="multiplayer_tap_refresh_to_check_again">Tap refresh to check again</string>
++    <string name="multiplayer_search_public_lobbies">Search Public Lobbies...</string>
++    <string name="multiplayer_game_name">Preferred Games</string>
++    <string name="prefered_game_name">Preferred Game</string>
++    <string name="multiplayer_no_game">No Games Found</string>
++    <string name="multiplayer_prefered_game_name_invalid">You must choose a Preferred Application to host a room.</string>
++
+ </resources>

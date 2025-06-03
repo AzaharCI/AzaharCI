@@ -1,0 +1,47 @@
+diff --git a/src/citra_qt/configuration/configure_per_game.cpp b/src/citra_qt/configuration/configure_per_game.cpp
+index 1a943d732..7fa4dfa60 100644
+--- a/src/citra_qt/configuration/configure_per_game.cpp
++++ b/src/citra_qt/configuration/configure_per_game.cpp
+@@ -27,6 +27,7 @@
+ #include "core/core.h"
+ #include "core/loader/loader.h"
+ #include "core/loader/smdh.h"
++#include "common/per_game_config.h"
+ #include "ui_configure_per_game.h"
+ 
+ ConfigurePerGame::ConfigurePerGame(QWidget* parent, u64 title_id_, const QString& file_name,
+@@ -149,6 +150,14 @@ void ConfigurePerGame::LoadConfiguration() {
+     ui->display_title_id->setText(
+         QStringLiteral("%1").arg(title_id, 16, 16, QLatin1Char{'0'}).toUpper());
+ 
++    const auto& default_settings = PerGameConfig::GetDefaultSettings(title_id);
++    for (const auto& [setting_name, value] : default_settings) {
++        // TODO(Corte-Z): Make this more portable
++        if (setting_name == "delay_game_render_thread_us") {
++            Settings::values.delay_game_render_thread_us = value;
++        }
++    }
++
+     std::unique_ptr<Loader::AppLoader> loader_ptr;
+     Loader::AppLoader* loader;
+     if (system.IsPoweredOn()) {
+diff --git a/src/common/CMakeLists.txt b/src/common/CMakeLists.txt
+index 8f90c9b00..7e80f9c60 100644
+--- a/src/common/CMakeLists.txt
++++ b/src/common/CMakeLists.txt
+@@ -153,6 +153,8 @@ add_library(citra_common STATIC
+     x64/xbyak_util.h
+     zstd_compression.cpp
+     zstd_compression.h
++
++    per_game_config.h
+ )
+ 
+ if (UNIX AND NOT APPLE)
+@@ -211,4 +213,4 @@ endif()
+ if (SSE42_COMPILE_OPTION)
+     target_compile_definitions(citra_common PRIVATE CITRA_HAS_SSE42)
+     target_compile_options(citra_common PRIVATE ${SSE42_COMPILE_OPTION})
+-endif()
+\ No newline at end of file
++endif()

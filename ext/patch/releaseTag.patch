@@ -1,0 +1,31 @@
+diff --git a/CMakeModules/GenerateBuildInfo.cmake b/CMakeModules/GenerateBuildInfo.cmake
+index 0b0334059..c3eb95ccb 100644
+--- a/CMakeModules/GenerateBuildInfo.cmake
++++ b/CMakeModules/GenerateBuildInfo.cmake
+@@ -15,6 +15,7 @@ if (EXISTS "${SRC_DIR}/.git/objects")
+     include(GetGitRevisionDescription)
+     get_git_head_revision(GIT_REF_SPEC GIT_REV)
+     git_describe(GIT_DESC --always --long --dirty)
++    git_describe(GIT_TAG --tags --abbrev=0)
+     git_branch_name(GIT_BRANCH)
+ elseif (EXISTS "${SRC_DIR}/GIT-COMMIT" AND EXISTS "${SRC_DIR}/GIT-TAG")
+     # unified source archive
+@@ -34,16 +35,8 @@ string(SUBSTRING "${GIT_REV}" 0 7 GIT_SHORT_REV)
+ set(REPO_NAME "")
+ set(BUILD_VERSION "0")
+ set(BUILD_FULLNAME "${GIT_SHORT_REV}")
+-if (DEFINED ENV{CI} AND DEFINED ENV{GITHUB_ACTIONS})
+-    if ($ENV{GITHUB_REF_TYPE} STREQUAL "tag")
+-        set(GIT_TAG $ENV{GITHUB_REF_NAME})
+-    endif()
+-elseif (EXISTS "${SRC_DIR}/GIT-COMMIT" AND EXISTS "${SRC_DIR}/GIT-TAG")
+-    file(READ "${SRC_DIR}/GIT-TAG" GIT_TAG)
+-    string(STRIP ${GIT_TAG} GIT_TAG)
+-endif()
+ 
+ if (DEFINED GIT_TAG AND NOT "${GIT_TAG}" STREQUAL "unknown")
+     set(BUILD_VERSION "${GIT_TAG}")
+     set(BUILD_FULLNAME "${BUILD_VERSION}")
+-endif()
+\ No newline at end of file
++endif()

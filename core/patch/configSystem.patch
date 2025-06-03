@@ -1,0 +1,2979 @@
+diff --git a/src/citra_qt/configuration/configure_system.cpp b/src/citra_qt/configuration/configure_system.cpp
+index fb9f6d7bb..ef7d1262a 100644
+--- a/src/citra_qt/configuration/configure_system.cpp
++++ b/src/citra_qt/configuration/configure_system.cpp
+@@ -1,15 +1,14 @@
+-// Copyright Citra Emulator Project / Azahar Emulator Project
++// Copyright 2016 Citra Emulator Project
+ // Licensed under GPLv2 or any later version
+ // Refer to the license.txt file included.
+ 
+-#include <cstring>
++#include "citra_qt/configuration/configure_system.h"
+ #include <QFileDialog>
+ #include <QFutureWatcher>
+ #include <QMessageBox>
+ #include <QProgressDialog>
+ #include <QtConcurrent/QtConcurrentMap>
+ #include "citra_qt/configuration/configuration_shared.h"
+-#include "citra_qt/configuration/configure_system.h"
+ #include "common/file_util.h"
+ #include "common/settings.h"
+ #include "core/core.h"
+@@ -17,9 +16,9 @@
+ #include "core/hle/service/cfg/cfg.h"
+ #include "core/hle/service/ptm/ptm.h"
+ #include "core/hw/aes/key.h"
+-#include "core/hw/unique_data.h"
+ #include "core/system_titles.h"
+ #include "ui_configure_system.h"
++#include <cstring>
+ 
+ static const std::array<int, 12> days_in_month = {{
+     31,
+@@ -227,60 +226,62 @@ static const std::array<const char*, 187> country_names = {
+ };
+ 
+ ConfigureSystem::ConfigureSystem(Core::System& system_, QWidget* parent)
+-    : QWidget(parent), ui(std::make_unique<Ui::ConfigureSystem>()), system{system_} {
++    : QWidget(parent)
++    , ui(std::make_unique<Ui::ConfigureSystem>())
++    , system{system_}
++{
+     ui->setupUi(this);
+-    connect(ui->combo_birthmonth, qOverload<int>(&QComboBox::currentIndexChanged), this,
++    connect(ui->combo_birthmonth,
++            qOverload<int>(&QComboBox::currentIndexChanged),
++            this,
+             &ConfigureSystem::UpdateBirthdayComboBox);
+-    connect(ui->combo_init_clock, qOverload<int>(&QComboBox::currentIndexChanged), this,
++    connect(ui->combo_init_clock,
++            qOverload<int>(&QComboBox::currentIndexChanged),
++            this,
+             &ConfigureSystem::UpdateInitTime);
+-    connect(ui->combo_init_ticks_type, qOverload<int>(&QComboBox::currentIndexChanged), this,
++    connect(ui->combo_init_ticks_type,
++            qOverload<int>(&QComboBox::currentIndexChanged),
++            this,
+             &ConfigureSystem::UpdateInitTicks);
+-    connect(ui->button_regenerate_console_id, &QPushButton::clicked, this,
++    connect(ui->button_regenerate_console_id,
++            &QPushButton::clicked,
++            this,
+             &ConfigureSystem::RefreshConsoleID);
+-    connect(ui->button_regenerate_mac, &QPushButton::clicked, this, &ConfigureSystem::RefreshMAC);
+-    connect(ui->button_unlink_console, &QPushButton::clicked, this,
+-            &ConfigureSystem::UnlinkConsole);
+-    connect(ui->combo_country, qOverload<int>(&QComboBox::currentIndexChanged), this,
+-            [this](int index) {
+-                CheckCountryValid(static_cast<u8>(ui->combo_country->itemData(index).toInt()));
+-            });
+-    connect(ui->region_combobox, qOverload<int>(&QComboBox::currentIndexChanged), this,
+-            [this]([[maybe_unused]] int index) {
+-                CheckCountryValid(static_cast<u8>(ui->combo_country->currentData().toInt()));
+-            });
++    connect(ui->button_start_download,
++            &QPushButton::clicked,
++            this,
++            &ConfigureSystem::DownloadFromNUS);
+ 
+     connect(ui->button_secure_info, &QPushButton::clicked, this, [this] {
+         ui->button_secure_info->setEnabled(false);
+         const QString file_path_qtstr = QFileDialog::getOpenFileName(
+-            this, tr("Select SecureInfo_A/B"), QString(),
++            this,
++            tr("Select SecureInfo_A/B"),
++            QString(),
+             tr("SecureInfo_A/B (SecureInfo_A SecureInfo_B);;All Files (*.*)"));
+         ui->button_secure_info->setEnabled(true);
+-        InstallSecureData(file_path_qtstr.toStdString(), HW::UniqueData::GetSecureInfoAPath());
++        InstallSecureData(file_path_qtstr.toStdString(), cfg->GetSecureInfoAPath());
+     });
+     connect(ui->button_friend_code_seed, &QPushButton::clicked, this, [this] {
+         ui->button_friend_code_seed->setEnabled(false);
+-        const QString file_path_qtstr =
+-            QFileDialog::getOpenFileName(this, tr("Select LocalFriendCodeSeed_A/B"), QString(),
+-                                         tr("LocalFriendCodeSeed_A/B (LocalFriendCodeSeed_A "
+-                                            "LocalFriendCodeSeed_B);;All Files (*.*)"));
++        const QString file_path_qtstr
++            = QFileDialog::getOpenFileName(this,
++                                           tr("Select LocalFriendCodeSeed_A/B"),
++                                           QString(),
++                                           tr("LocalFriendCodeSeed_A/B (LocalFriendCodeSeed_A "
++                                              "LocalFriendCodeSeed_B);;All Files (*.*)"));
+         ui->button_friend_code_seed->setEnabled(true);
+-        InstallSecureData(file_path_qtstr.toStdString(),
+-                          HW::UniqueData::GetLocalFriendCodeSeedBPath());
++        InstallSecureData(file_path_qtstr.toStdString(), cfg->GetLocalFriendCodeSeedBPath());
+     });
+-    connect(ui->button_otp, &QPushButton::clicked, this, [this] {
+-        ui->button_otp->setEnabled(false);
+-        const QString file_path_qtstr =
+-            QFileDialog::getOpenFileName(this, tr("Select encrypted OTP file"), QString(),
+-                                         tr("Binary file (*.bin);;All Files (*.*)"));
+-        ui->button_otp->setEnabled(true);
+-        InstallSecureData(file_path_qtstr.toStdString(), HW::UniqueData::GetOTPPath());
+-    });
+-    connect(ui->button_movable, &QPushButton::clicked, this, [this] {
+-        ui->button_movable->setEnabled(false);
+-        const QString file_path_qtstr = QFileDialog::getOpenFileName(
+-            this, tr("Select movable.sed"), QString(), tr("Sed file (*.sed);;All Files (*.*)"));
+-        ui->button_movable->setEnabled(true);
+-        InstallSecureData(file_path_qtstr.toStdString(), HW::UniqueData::GetMovablePath());
++    connect(ui->button_ct_cert, &QPushButton::clicked, this, [this] {
++        ui->button_ct_cert->setEnabled(false);
++        const QString file_path_qtstr
++            = QFileDialog::getOpenFileName(this,
++                                           tr("Select CTCert"),
++                                           QString(),
++                                           tr("CTCert.bin (*.bin);;All Files (*.*)"));
++        ui->button_ct_cert->setEnabled(true);
++        InstallCTCert(file_path_qtstr.toStdString());
+     });
+ 
+     for (u8 i = 0; i < country_names.size(); i++) {
+@@ -288,31 +289,45 @@ ConfigureSystem::ConfigureSystem(Core::System& system_, QWidget* parent)
+             ui->combo_country->addItem(tr(country_names.at(i)), i);
+         }
+     }
+-    ui->label_country_invalid->setVisible(false);
+-    ui->label_country_invalid->setStyleSheet(QStringLiteral("QLabel { color: #ff3333; }"));
+ 
+     SetupPerGameUI();
++
++    ui->combo_download_set->setCurrentIndex(0);    // set to Minimal
++    ui->combo_download_region->setCurrentIndex(0); // set to the base region
++
++    HW::AES::InitKeys(true);
++    bool keys_available = HW::AES::IsKeyXAvailable(HW::AES::KeySlotID::NCCHSecure1)
++                          && HW::AES::IsKeyXAvailable(HW::AES::KeySlotID::NCCHSecure2);
++    for (u8 i = 0; i < HW::AES::MaxCommonKeySlot && keys_available; i++) {
++        HW::AES::SelectCommonKeyIndex(i);
++        if (!HW::AES::IsNormalKeyAvailable(HW::AES::KeySlotID::TicketCommonKey)) {
++            keys_available = false;
++            break;
++        }
++    }
++    if (keys_available) {
++        ui->button_start_download->setEnabled(true);
++        ui->combo_download_set->setEnabled(true);
++        ui->combo_download_region->setEnabled(true);
++        ui->label_nus_download->setText(tr("Download System Files from Nintendo servers"));
++    } else {
++        ui->button_start_download->setEnabled(false);
++        ui->combo_download_set->setEnabled(false);
++        ui->combo_download_region->setEnabled(false);
++        ui->label_nus_download->setTextInteractionFlags(Qt::TextBrowserInteraction);
++        ui->label_nus_download->setOpenExternalLinks(true);
++        ui->label_nus_download->setText(tr("Azahar is missing keys to download system files."));
++    }
++
+     ConfigureTime();
+ }
+ 
+ ConfigureSystem::~ConfigureSystem() = default;
+ 
+-void ConfigureSystem::SetConfiguration() {
++void ConfigureSystem::SetConfiguration()
++{
+     enabled = !system.IsPoweredOn();
+ 
+-    if (!Settings::IsConfiguringGlobal()) {
+-        ConfigurationShared::SetHighlight(ui->region_label,
+-                                          !Settings::values.region_value.UsingGlobal());
+-        const bool is_region_global = Settings::values.region_value.UsingGlobal();
+-        ui->region_combobox->setCurrentIndex(
+-            is_region_global ? ConfigurationShared::USE_GLOBAL_INDEX
+-                             : static_cast<int>(Settings::values.region_value.GetValue()) +
+-                                   ConfigurationShared::USE_GLOBAL_OFFSET + 1);
+-    } else {
+-        // The first item is "auto-select" with actual value -1, so plus one here will do the trick
+-        ui->region_combobox->setCurrentIndex(Settings::values.region_value.GetValue() + 1);
+-    }
+-
+     ui->combo_init_clock->setCurrentIndex(static_cast<u8>(Settings::values.init_clock.GetValue()));
+     QDateTime date_time;
+     date_time.setSecsSinceEpoch(Settings::values.init_time.GetValue());
+@@ -344,13 +359,12 @@ void ConfigureSystem::SetConfiguration() {
+ 
+     ui->toggle_new_3ds->setChecked(Settings::values.is_new_3ds.GetValue());
+     ui->toggle_lle_applets->setChecked(Settings::values.lle_applets.GetValue());
+-    ui->enable_required_online_lle_modules->setChecked(
+-        Settings::values.enable_required_online_lle_modules.GetValue());
+     ui->plugin_loader->setChecked(Settings::values.plugin_loader_enabled.GetValue());
+     ui->allow_plugin_loader->setChecked(Settings::values.allow_plugin_loader.GetValue());
+ }
+ 
+-void ConfigureSystem::ReadSystemSettings() {
++void ConfigureSystem::ReadSystemSettings()
++{
+     // set username
+     username = cfg->GetUsername();
+     ui->edit_username->setText(QString::fromStdU16String(username));
+@@ -359,8 +373,8 @@ void ConfigureSystem::ReadSystemSettings() {
+     std::tie(birthmonth, birthday) = cfg->GetBirthday();
+     ui->combo_birthmonth->setCurrentIndex(birthmonth - 1);
+     UpdateBirthdayComboBox(
+-        birthmonth -
+-        1); // explicitly update it because the signal from setCurrentIndex is not reliable
++        birthmonth
++        - 1); // explicitly update it because the signal from setCurrentIndex is not reliable
+     ui->combo_birthday->setCurrentIndex(birthday - 1);
+ 
+     // set system language
+@@ -374,7 +388,6 @@ void ConfigureSystem::ReadSystemSettings() {
+     // set the country code
+     country_code = cfg->GetCountryCode();
+     ui->combo_country->setCurrentIndex(ui->combo_country->findData(country_code));
+-    CheckCountryValid(country_code);
+ 
+     // set whether system setup is needed
+     system_setup = cfg->IsSystemSetupNeeded();
+@@ -384,23 +397,21 @@ void ConfigureSystem::ReadSystemSettings() {
+     u64 console_id = cfg->GetConsoleUniqueId();
+     ui->label_console_id->setText(
+         tr("Console ID: 0x%1").arg(QString::number(console_id, 16).toUpper()));
+-    mac_address = cfg->GetMacAddress();
+-    ui->label_mac->setText(tr("MAC: %1").arg(QString::fromStdString(mac_address)));
+ 
+     // set play coin
+     play_coin = Service::PTM::Module::GetPlayCoins();
+     ui->spinBox_play_coins->setValue(play_coin);
+ 
++    // set firmware download region
++    ui->combo_download_region->setCurrentIndex(static_cast<int>(cfg->GetRegionValue(false)));
++
+     // Refresh secure data status
+     RefreshSecureDataStatus();
+ }
+ 
+-void ConfigureSystem::ApplyConfiguration() {
++void ConfigureSystem::ApplyConfiguration()
++{
+     if (enabled) {
+-        ConfigurationShared::ApplyPerGameSetting(&Settings::values.region_value,
+-                                                 ui->region_combobox,
+-                                                 [](s32 index) { return index - 1; });
+-
+         bool modified = false;
+ 
+         // apply username
+@@ -414,7 +425,7 @@ void ConfigureSystem::ApplyConfiguration() {
+         s32 new_birthmonth = ui->combo_birthmonth->currentIndex() + 1;
+         s32 new_birthday = ui->combo_birthday->currentIndex() + 1;
+         if (birthmonth != new_birthmonth || birthday != new_birthday) {
+-            cfg->SetBirthday(static_cast<u8>(new_birthmonth), static_cast<u8>(new_birthday));
++            cfg->SetBirthday(new_birthmonth, new_birthday);
+             modified = true;
+         }
+ 
+@@ -457,22 +468,21 @@ void ConfigureSystem::ApplyConfiguration() {
+             cfg->UpdateConfigNANDSavegame();
+         }
+ 
+-        ConfigurationShared::ApplyPerGameSetting(&Settings::values.is_new_3ds, ui->toggle_new_3ds,
++        ConfigurationShared::ApplyPerGameSetting(&Settings::values.is_new_3ds,
++                                                 ui->toggle_new_3ds,
+                                                  is_new_3ds);
+         ConfigurationShared::ApplyPerGameSetting(&Settings::values.lle_applets,
+-                                                 ui->toggle_lle_applets, lle_applets);
+-        ConfigurationShared::ApplyPerGameSetting(
+-            &Settings::values.enable_required_online_lle_modules,
+-            ui->enable_required_online_lle_modules, required_online_lle_modules);
++                                                 ui->toggle_lle_applets,
++                                                 lle_applets);
+ 
+-        Settings::values.init_clock =
+-            static_cast<Settings::InitClock>(ui->combo_init_clock->currentIndex());
++        Settings::values.init_clock = static_cast<Settings::InitClock>(
++            ui->combo_init_clock->currentIndex());
+         Settings::values.init_time = ui->edit_init_time->dateTime().toSecsSinceEpoch();
+ 
+-        Settings::values.init_ticks_type =
+-            static_cast<Settings::InitTicks>(ui->combo_init_ticks_type->currentIndex());
+-        Settings::values.init_ticks_override =
+-            static_cast<s64>(ui->edit_init_ticks_value->text().toLongLong());
++        Settings::values.init_ticks_type = static_cast<Settings::InitTicks>(
++            ui->combo_init_ticks_type->currentIndex());
++        Settings::values.init_ticks_override = static_cast<s64>(
++            ui->edit_init_ticks_value->text().toLongLong());
+ 
+         Settings::values.steps_per_hour = static_cast<u16>(ui->spinBox_steps_per_hour->value());
+ 
+@@ -486,18 +496,14 @@ void ConfigureSystem::ApplyConfiguration() {
+         Settings::values.init_time_offset = time_offset_days + time_offset_time;
+         Settings::values.is_new_3ds = ui->toggle_new_3ds->isChecked();
+         Settings::values.lle_applets = ui->toggle_lle_applets->isChecked();
+-        Settings::values.enable_required_online_lle_modules =
+-            ui->enable_required_online_lle_modules->isChecked();
+ 
+         Settings::values.plugin_loader_enabled.SetValue(ui->plugin_loader->isChecked());
+         Settings::values.allow_plugin_loader.SetValue(ui->allow_plugin_loader->isChecked());
+-
+-        cfg->GetMacAddress() = mac_address;
+-        cfg->SaveMacAddress();
+     }
+ }
+ 
+-void ConfigureSystem::UpdateBirthdayComboBox(int birthmonth_index) {
++void ConfigureSystem::UpdateBirthdayComboBox(int birthmonth_index)
++{
+     if (birthmonth_index < 0 || birthmonth_index >= 12)
+         return;
+ 
+@@ -522,7 +528,8 @@ void ConfigureSystem::UpdateBirthdayComboBox(int birthmonth_index) {
+     ui->combo_birthday->setCurrentIndex(birthday_index);
+ }
+ 
+-void ConfigureSystem::ConfigureTime() {
++void ConfigureSystem::ConfigureTime()
++{
+     QDateTime dt;
+     dt.fromString(QStringLiteral("2000-01-01 00:00:01"), QStringLiteral("yyyy-MM-dd hh:mm:ss"));
+     ui->edit_init_time->setMinimumDateTime(dt);
+@@ -534,10 +541,11 @@ void ConfigureSystem::ConfigureTime() {
+     UpdateInitTicks(ui->combo_init_ticks_type->currentIndex());
+ }
+ 
+-void ConfigureSystem::UpdateInitTime(int init_clock) {
++void ConfigureSystem::UpdateInitTime(int init_clock)
++{
+     const bool is_global = Settings::IsConfiguringGlobal();
+-    const bool is_fixed_time =
+-        static_cast<Settings::InitClock>(init_clock) == Settings::InitClock::FixedTime;
++    const bool is_fixed_time = static_cast<Settings::InitClock>(init_clock)
++                               == Settings::InitClock::FixedTime;
+ 
+     ui->label_init_time->setVisible(is_fixed_time && is_global);
+     ui->edit_init_time->setVisible(is_fixed_time && is_global);
+@@ -547,27 +555,28 @@ void ConfigureSystem::UpdateInitTime(int init_clock) {
+     ui->edit_init_time_offset_time->setVisible(!is_fixed_time && is_global);
+ }
+ 
+-void ConfigureSystem::UpdateInitTicks(int init_ticks_type) {
++void ConfigureSystem::UpdateInitTicks(int init_ticks_type)
++{
+     const bool is_global = Settings::IsConfiguringGlobal();
+-    const bool is_fixed =
+-        static_cast<Settings::InitTicks>(init_ticks_type) == Settings::InitTicks::Fixed;
++    const bool is_fixed = static_cast<Settings::InitTicks>(init_ticks_type)
++                          == Settings::InitTicks::Fixed;
+ 
+     ui->label_init_ticks_value->setVisible(is_fixed && is_global);
+     ui->edit_init_ticks_value->setVisible(is_fixed && is_global);
+ }
+ 
+-void ConfigureSystem::RefreshConsoleID() {
+-    ui->button_regenerate_console_id->setEnabled(false);
++void ConfigureSystem::RefreshConsoleID()
++{
+     QMessageBox::StandardButton reply;
+-    QString warning_text =
+-        tr("This will replace your current virtual 3DS console ID with a new one. "
+-           "Your current virtual 3DS console ID will not be recoverable. "
+-           "This might have unexpected effects in applications. This might fail "
+-           "if you use an outdated config save. Continue?");
+-    reply =
+-        QMessageBox::warning(this, tr("Warning"), warning_text, QMessageBox::No | QMessageBox::Yes);
++    QString warning_text = tr("This will replace your current virtual 3DS with a new one. "
++                              "Your current virtual 3DS will not be recoverable. "
++                              "This might have unexpected effects in games. This might fail, "
++                              "if you use an outdated config savegame. Continue?");
++    reply = QMessageBox::critical(this,
++                                  tr("Warning"),
++                                  warning_text,
++                                  QMessageBox::No | QMessageBox::Yes);
+     if (reply == QMessageBox::No) {
+-        ui->button_regenerate_console_id->setEnabled(true);
+         return;
+     }
+ 
+@@ -576,136 +585,76 @@ void ConfigureSystem::RefreshConsoleID() {
+     cfg->UpdateConfigNANDSavegame();
+     ui->label_console_id->setText(
+         tr("Console ID: 0x%1").arg(QString::number(console_id, 16).toUpper()));
+-    ui->button_regenerate_console_id->setEnabled(true);
+-}
+-
+-void ConfigureSystem::RefreshMAC() {
+-    ui->button_regenerate_mac->setEnabled(false);
+-    QMessageBox::StandardButton reply;
+-    QString warning_text = tr("This will replace your current MAC address with a new one. "
+-                              "It is not recommended to do this if you got the MAC address from "
+-                              "your real console using the setup tool. Continue?");
+-    reply =
+-        QMessageBox::warning(this, tr("Warning"), warning_text, QMessageBox::No | QMessageBox::Yes);
+-    if (reply == QMessageBox::No) {
+-        ui->button_regenerate_mac->setEnabled(true);
+-        return;
+-    }
+-
+-    mac_address = Service::CFG::GenerateRandomMAC();
+-    ui->label_mac->setText(tr("MAC: %1").arg(QString::fromStdString(mac_address)));
+-    ui->button_regenerate_mac->setEnabled(true);
+ }
+ 
+-void ConfigureSystem::UnlinkConsole() {
+-    ui->button_unlink_console->setEnabled(false);
+-    QMessageBox::StandardButton reply;
+-    QString warning_text =
+-        tr("This action will unlink your real console from Azahar, with the following "
+-           "consequences:<br><ul><li>Your OTP, SecureInfo and LocalFriendCodeSeed will be removed "
+-           "from Azahar.</li><li>Your friend list will reset and you will be logged out of your "
+-           "NNID/PNID account.</li><li>System files and eshop titles obtained through Azahar will "
+-           "become inaccessible until the same console is linked again (save data will not be "
+-           "lost).</li></ul><br>Continue?");
+-    reply =
+-        QMessageBox::warning(this, tr("Warning"), warning_text, QMessageBox::No | QMessageBox::Yes);
+-    if (reply == QMessageBox::No) {
+-        ui->button_unlink_console->setEnabled(true);
++void ConfigureSystem::InstallSecureData(const std::string& from_path, const std::string& to_path)
++{
++    std::string from = FileUtil::SanitizePath(from_path,
++                                              FileUtil::DirectorySeparator::PlatformDefault);
++    std::string to = FileUtil::SanitizePath(to_path, FileUtil::DirectorySeparator::PlatformDefault);
++    if (from.empty() || from == to) {
+         return;
+     }
+-
+-    HW::UniqueData::UnlinkConsole();
++    FileUtil::CreateFullPath(to_path);
++    FileUtil::Copy(from, to);
++    cfg->InvalidateSecureData();
+     RefreshSecureDataStatus();
+-    ui->button_unlink_console->setEnabled(true);
+-}
+-
+-void ConfigureSystem::CheckCountryValid(u8 country) {
+-    // TODO(PabloMK7): Make this per-game compatible
+-    if (!Settings::IsConfiguringGlobal())
+-        return;
+-
+-    s32 region = ui->region_combobox->currentIndex() - 1;
+-    QString label_text;
+-
+-    if (region != Settings::REGION_VALUE_AUTO_SELECT &&
+-        !cfg->IsValidRegionCountry(static_cast<u32>(region), country)) {
+-        label_text = tr("Invalid country for configured region");
+-    }
+-    if (HW::UniqueData::GetSecureInfoA().IsValid()) {
+-        region = static_cast<u32>(cfg->GetRegionValue(true));
+-        if (!cfg->IsValidRegionCountry(static_cast<u32>(region), country)) {
+-            if (!label_text.isEmpty()) {
+-                label_text += QString::fromStdString("\n");
+-            }
+-            label_text += tr("Invalid country for console unique data");
+-        }
+-    }
+-
+-    ui->label_country_invalid->setText(label_text);
+-    ui->label_country_invalid->setVisible(!label_text.isEmpty());
+ }
+ 
+-void ConfigureSystem::InstallSecureData(const std::string& from_path, const std::string& to_path) {
+-    std::string from =
+-        FileUtil::SanitizePath(from_path, FileUtil::DirectorySeparator::PlatformDefault);
+-    std::string to = FileUtil::SanitizePath(to_path, FileUtil::DirectorySeparator::PlatformDefault);
++void ConfigureSystem::InstallCTCert(const std::string& from_path)
++{
++    std::string from = FileUtil::SanitizePath(from_path,
++                                              FileUtil::DirectorySeparator::PlatformDefault);
++    std::string to = FileUtil::SanitizePath(Service::AM::Module::GetCTCertPath(),
++                                            FileUtil::DirectorySeparator::PlatformDefault);
+     if (from.empty() || from == to) {
+         return;
+     }
+-    FileUtil::CreateFullPath(to);
+     FileUtil::Copy(from, to);
+-    HW::UniqueData::InvalidateSecureData();
+     RefreshSecureDataStatus();
+ }
+ 
+-void ConfigureSystem::RefreshSecureDataStatus() {
+-    auto status_to_str = [](HW::UniqueData::SecureDataLoadStatus status) {
++void ConfigureSystem::RefreshSecureDataStatus()
++{
++    auto status_to_str = [](Service::CFG::SecureDataLoadStatus status) {
+         switch (status) {
+-        case HW::UniqueData::SecureDataLoadStatus::Loaded:
+-            return tr("Status: Loaded");
+-        case HW::UniqueData::SecureDataLoadStatus::InvalidSignature:
+-            return tr("Status: Loaded (Invalid Signature)");
+-        case HW::UniqueData::SecureDataLoadStatus::RegionChanged:
+-            return tr("Status: Loaded (Region Changed)");
+-        case HW::UniqueData::SecureDataLoadStatus::NotFound:
+-            return tr("Status: Not Found");
+-        case HW::UniqueData::SecureDataLoadStatus::Invalid:
+-            return tr("Status: Invalid");
+-        case HW::UniqueData::SecureDataLoadStatus::IOError:
+-            return tr("Status: IO Error");
++        case Service::CFG::SecureDataLoadStatus::Loaded:
++            return "Loaded";
++        case Service::CFG::SecureDataLoadStatus::NotFound:
++            return "Not Found";
++        case Service::CFG::SecureDataLoadStatus::Invalid:
++            return "Invalid";
++        case Service::CFG::SecureDataLoadStatus::IOError:
++            return "IO Error";
+         default:
+-            return QString();
++            return "";
+         }
+     };
+ 
+-    ui->label_secure_info_status->setText(status_to_str(HW::UniqueData::LoadSecureInfoA()));
+-    ui->label_friend_code_seed_status->setText(
+-        status_to_str(HW::UniqueData::LoadLocalFriendCodeSeedB()));
+-    ui->label_otp_status->setText(status_to_str(HW::UniqueData::LoadOTP()));
+-    ui->label_movable_status->setText(status_to_str(HW::UniqueData::LoadMovable()));
++    Service::AM::CTCert ct_cert;
+ 
+-    if (HW::UniqueData::IsFullConsoleLinked()) {
+-        ui->linked_console->setVisible(true);
+-        ui->button_otp->setEnabled(false);
+-        ui->button_secure_info->setEnabled(false);
+-        ui->button_friend_code_seed->setEnabled(false);
+-    } else {
+-        ui->linked_console->setVisible(false);
+-    }
++    ui->label_secure_info_status->setText(
++        tr((std::string("Status: ") + status_to_str(cfg->LoadSecureInfoAFile())).c_str()));
++    ui->label_friend_code_seed_status->setText(
++        tr((std::string("Status: ") + status_to_str(cfg->LoadLocalFriendCodeSeedBFile())).c_str()));
++    ui->label_ct_cert_status->setText(
++        tr((std::string("Status: ")
++            + status_to_str(static_cast<Service::CFG::SecureDataLoadStatus>(
++                Service::AM::Module::LoadCTCertFile(ct_cert))))
++               .c_str()));
+ }
+ 
+-void ConfigureSystem::RetranslateUI() {
++void ConfigureSystem::RetranslateUI()
++{
+     ui->retranslateUi(this);
+ }
+ 
+-void ConfigureSystem::SetupPerGameUI() {
++void ConfigureSystem::SetupPerGameUI()
++{
+     // Block the global settings if a game is currently running that overrides them
+     if (Settings::IsConfiguringGlobal()) {
+         ui->toggle_new_3ds->setEnabled(Settings::values.is_new_3ds.UsingGlobal());
+         ui->toggle_lle_applets->setEnabled(Settings::values.lle_applets.UsingGlobal());
+-        ui->enable_required_online_lle_modules->setEnabled(
+-            Settings::values.enable_required_online_lle_modules.UsingGlobal());
+-        ui->region_combobox->setEnabled(Settings::values.region_value.UsingGlobal());
+         return;
+     }
+ 
+@@ -717,7 +666,6 @@ void ConfigureSystem::SetupPerGameUI() {
+     ui->label_init_ticks_type->setVisible(false);
+     ui->label_init_ticks_value->setVisible(false);
+     ui->label_console_id->setVisible(false);
+-    ui->label_mac->setVisible(false);
+     ui->label_sound->setVisible(false);
+     ui->label_language->setVisible(false);
+     ui->label_country->setVisible(false);
+@@ -739,7 +687,6 @@ void ConfigureSystem::SetupPerGameUI() {
+     ui->edit_init_ticks_value->setVisible(false);
+     ui->toggle_system_setup->setVisible(false);
+     ui->button_regenerate_console_id->setVisible(false);
+-    ui->button_regenerate_mac->setVisible(false);
+     // Apps can change the state of the plugin loader, so plugins load
+     // to a chainloaded app with specific parameters. Don't allow
+     // the plugin loader state to be configured per-game as it may
+@@ -747,16 +694,64 @@ void ConfigureSystem::SetupPerGameUI() {
+     ui->label_plugin_loader->setVisible(false);
+     ui->plugin_loader->setVisible(false);
+     ui->allow_plugin_loader->setVisible(false);
+-    ui->group_real_console_unique_data->setVisible(false);
++    // Disable the system firmware downloader.
++    ui->label_nus_download->setVisible(false);
++    ui->body_nus_download->setVisible(false);
+ 
+-    ConfigurationShared::SetColoredTristate(ui->toggle_new_3ds, Settings::values.is_new_3ds,
++    ConfigurationShared::SetColoredTristate(ui->toggle_new_3ds,
++                                            Settings::values.is_new_3ds,
+                                             is_new_3ds);
+-    ConfigurationShared::SetColoredTristate(ui->toggle_lle_applets, Settings::values.lle_applets,
++    ConfigurationShared::SetColoredTristate(ui->toggle_lle_applets,
++                                            Settings::values.lle_applets,
+                                             lle_applets);
+-    ConfigurationShared::SetColoredTristate(ui->enable_required_online_lle_modules,
+-                                            Settings::values.enable_required_online_lle_modules,
+-                                            required_online_lle_modules);
+-    ConfigurationShared::SetColoredComboBox(
+-        ui->region_combobox, ui->region_label,
+-        static_cast<u32>(Settings::values.region_value.GetValue(true) + 1));
++}
++
++void ConfigureSystem::DownloadFromNUS()
++{
++    ui->button_start_download->setEnabled(false);
++
++    const auto mode = static_cast<Core::SystemTitleSet>(1 << ui->combo_download_set->currentIndex());
++    const auto region = static_cast<u32>(ui->combo_download_region->currentIndex());
++    const std::vector<u64> titles = Core::GetSystemTitleIds(mode, region);
++
++    QProgressDialog progress(tr("Downloading files..."),
++                             tr("Cancel"),
++                             0,
++                             static_cast<int>(titles.size()),
++                             this);
++    progress.setWindowModality(Qt::WindowModal);
++
++    QFutureWatcher<void> future_watcher;
++    QObject::connect(&future_watcher,
++                     &QFutureWatcher<void>::finished,
++                     &progress,
++                     &QProgressDialog::reset);
++    QObject::connect(&progress,
++                     &QProgressDialog::canceled,
++                     &future_watcher,
++                     &QFutureWatcher<void>::cancel);
++    QObject::connect(&future_watcher,
++                     &QFutureWatcher<void>::progressValueChanged,
++                     &progress,
++                     &QProgressDialog::setValue);
++
++    auto failed = false;
++    const auto download_title = [&future_watcher, &failed](const u64& title_id) {
++        if (Service::AM::InstallFromNus(title_id) != Service::AM::InstallStatus::Success) {
++            failed = true;
++            future_watcher.cancel();
++        }
++    };
++
++    future_watcher.setFuture(QtConcurrent::map(titles, download_title));
++    progress.exec();
++    future_watcher.waitForFinished();
++
++    if (failed) {
++        QMessageBox::critical(this, tr("Azahar"), tr("Downloading system files failed."));
++    } else if (!future_watcher.isCanceled()) {
++        QMessageBox::information(this, tr("Azahar"), tr("Successfully downloaded system files."));
++    }
++
++    ui->button_start_download->setEnabled(true);
+ }
+diff --git a/src/citra_qt/configuration/configure_system.h b/src/citra_qt/configuration/configure_system.h
+index af7c81200..d6a68af31 100644
+--- a/src/citra_qt/configuration/configure_system.h
++++ b/src/citra_qt/configuration/configure_system.h
+@@ -1,12 +1,12 @@
+-// Copyright Citra Emulator Project / Azahar Emulator Project
++// Copyright 2016 Citra Emulator Project
+ // Licensed under GPLv2 or any later version
+ // Refer to the license.txt file included.
+ 
+ #pragma once
+ 
+-#include <memory>
+ #include <QWidget>
+ #include "common/common_types.h"
++#include <memory>
+ 
+ namespace Ui {
+ class ConfigureSystem;
+@@ -32,7 +32,8 @@ class Module;
+ } // namespace CFG
+ } // namespace Service
+ 
+-class ConfigureSystem : public QWidget {
++class ConfigureSystem : public QWidget
++{
+     Q_OBJECT
+ 
+ public:
+@@ -51,21 +52,20 @@ private:
+     void UpdateInitTime(int init_clock);
+     void UpdateInitTicks(int init_ticks_type);
+     void RefreshConsoleID();
+-    void RefreshMAC();
+-    void UnlinkConsole();
+-    void CheckCountryValid(u8 country);
+ 
+     void InstallSecureData(const std::string& from_path, const std::string& to_path);
++    void InstallCTCert(const std::string& from_path);
+     void RefreshSecureDataStatus();
+ 
+     void SetupPerGameUI();
+ 
++    void DownloadFromNUS();
++
+ private:
+     std::unique_ptr<Ui::ConfigureSystem> ui;
+     Core::System& system;
+     ConfigurationShared::CheckState is_new_3ds;
+     ConfigurationShared::CheckState lle_applets;
+-    ConfigurationShared::CheckState required_online_lle_modules;
+     bool enabled = false;
+ 
+     std::shared_ptr<Service::CFG::Module> cfg;
+@@ -77,5 +77,4 @@ private:
+     u8 country_code;
+     u16 play_coin;
+     bool system_setup;
+-    std::string mac_address;
+ };
+diff --git a/src/citra_qt/configuration/configure_system.ui b/src/citra_qt/configuration/configure_system.ui
+index 244fb3c5f..86b7fb7f5 100644
+--- a/src/citra_qt/configuration/configure_system.ui
++++ b/src/citra_qt/configuration/configure_system.ui
+@@ -6,7 +6,7 @@
+    <rect>
+     <x>0</x>
+     <y>0</y>
+-    <width>653</width>
++    <width>535</width>
+     <height>619</height>
+    </rect>
+   </property>
+@@ -14,26 +14,11 @@
+    <string>Form</string>
+   </property>
+   <layout class="QVBoxLayout" name="verticalLayout_scrollbar">
+-   <property name="spacing">
+-    <number>0</number>
+-   </property>
+-   <property name="leftMargin">
+-    <number>0</number>
+-   </property>
+-   <property name="topMargin">
+-    <number>0</number>
+-   </property>
+-   <property name="rightMargin">
+-    <number>0</number>
+-   </property>
+-   <property name="bottomMargin">
+-    <number>0</number>
+-   </property>
+    <item>
+     <widget class="QScrollArea" name="scrollArea">
+      <property name="minimumSize">
+       <size>
+-       <width>660</width>
++       <width>0</width>
+        <height>480</height>
+       </size>
+      </property>
+@@ -64,83 +49,21 @@
+             <string>System Settings</string>
+            </property>
+            <layout class="QGridLayout" name="gridLayout">
+-            <item row="0" column="0">
++            <item row="1" column="0">
+              <widget class="QCheckBox" name="toggle_new_3ds">
+               <property name="text">
+                <string>Enable New 3DS mode</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="1" column="0">
++            <item row="2" column="0">
+              <widget class="QCheckBox" name="toggle_lle_applets">
+               <property name="text">
+                <string>Use LLE applets (if installed)</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="2" column="0">
+-             <widget class="QCheckBox" name="enable_required_online_lle_modules">
+-              <property name="text">
+-               <string>Enable required LLE modules for
+-online features (if installed)</string>
+-              </property>
+-              <property name="toolTip">
+-               <string>Enables the LLE modules needed for online multiplayer, eShop access, etc.</string>
+-              </property>
+-             </widget>
+-            </item>
+-            <item row="3" column="0">
+-             <widget class="QLabel" name="region_label">
+-              <property name="text">
+-               <string>Region:</string>
+-              </property>
+-             </widget>
+-            </item>
+             <item row="3" column="1">
+-             <widget class="QComboBox" name="region_combobox">
+-              <item>
+-               <property name="text">
+-                <string>Auto-select</string>
+-               </property>
+-              </item>
+-              <item>
+-               <property name="text">
+-                <string notr="true">JPN</string>
+-               </property>
+-              </item>
+-              <item>
+-               <property name="text">
+-                <string notr="true">USA</string>
+-               </property>
+-              </item>
+-              <item>
+-               <property name="text">
+-                <string notr="true">EUR</string>
+-               </property>
+-              </item>
+-              <item>
+-               <property name="text">
+-                <string notr="true">AUS</string>
+-               </property>
+-              </item>
+-              <item>
+-               <property name="text">
+-                <string notr="true">CHN</string>
+-               </property>
+-              </item>
+-              <item>
+-               <property name="text">
+-                <string notr="true">KOR</string>
+-               </property>
+-              </item>
+-              <item>
+-               <property name="text">
+-                <string notr="true">TWN</string>
+-               </property>
+-              </item>
+-             </widget>
+-            </item>
+-            <item row="4" column="1">
+              <widget class="QLineEdit" name="edit_username">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+@@ -153,21 +76,21 @@ online features (if installed)</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="4" column="0">
++            <item row="3" column="0">
+              <widget class="QLabel" name="label_username">
+               <property name="text">
+                <string>Username</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="5" column="0">
++            <item row="4" column="0">
+              <widget class="QLabel" name="label_birthday">
+               <property name="text">
+                <string>Birthday</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="5" column="1">
++            <item row="4" column="1">
+              <layout class="QHBoxLayout" name="horizontalLayout_birthday2">
+               <item>
+                <widget class="QComboBox" name="combo_birthmonth">
+@@ -238,14 +161,14 @@ online features (if installed)</string>
+               </item>
+              </layout>
+             </item>
+-            <item row="6" column="0">
++            <item row="5" column="0">
+              <widget class="QLabel" name="label_language">
+               <property name="text">
+                <string>Language</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="6" column="1">
++            <item row="5" column="1">
+              <widget class="QComboBox" name="combo_language">
+               <property name="toolTip">
+                <string>Note: this can be overridden when region setting is auto-select</string>
+@@ -312,14 +235,14 @@ online features (if installed)</string>
+               </item>
+              </widget>
+             </item>
+-            <item row="7" column="0">
++            <item row="6" column="0">
+              <widget class="QLabel" name="label_sound">
+               <property name="text">
+                <string>Sound output mode</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="7" column="1">
++            <item row="6" column="1">
+              <widget class="QComboBox" name="combo_sound">
+               <item>
+                <property name="text">
+@@ -338,31 +261,24 @@ online features (if installed)</string>
+               </item>
+              </widget>
+             </item>
+-            <item row="8" column="0">
++            <item row="7" column="0">
+              <widget class="QLabel" name="label_country">
+               <property name="text">
+                <string>Country</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="8" column="1">
++            <item row="7" column="1">
+              <widget class="QComboBox" name="combo_country"/>
+             </item>
+-            <item row="9" column="1">
+-             <widget class="QLabel" name="label_country_invalid">
+-              <property name="text">
+-               <string/>
+-              </property>
+-             </widget>
+-            </item>
+-            <item row="10" column="0">
++            <item row="8" column="0">
+              <widget class="QLabel" name="label_init_clock">
+               <property name="text">
+                <string>Clock</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="10" column="1">
++            <item row="8" column="1">
+              <widget class="QComboBox" name="combo_init_clock">
+               <item>
+                <property name="text">
+@@ -376,28 +292,28 @@ online features (if installed)</string>
+               </item>
+              </widget>
+             </item>
+-            <item row="11" column="0">
++            <item row="9" column="0">
+              <widget class="QLabel" name="label_init_time">
+               <property name="text">
+                <string>Startup time</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="11" column="1">
++            <item row="9" column="1">
+              <widget class="QDateTimeEdit" name="edit_init_time">
+               <property name="displayFormat">
+                <string>yyyy-MM-ddTHH:mm:ss</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="12" column="0">
++            <item row="9" column="0">
+              <widget class="QLabel" name="label_init_time_offset">
+               <property name="text">
+                <string>Offset time</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="12" column="1">
++            <item row="9" column="1">
+              <layout class="QGridLayout" name="edit_init_time_offset_grid">
+               <item row="0" column="0">
+                <widget class="QSpinBox" name="edit_init_time_offset_days">
+@@ -421,14 +337,14 @@ online features (if installed)</string>
+               </item>
+              </layout>
+             </item>
+-            <item row="13" column="0">
++            <item row="10" column="0">
+              <widget class="QLabel" name="label_init_ticks_type">
+               <property name="text">
+                <string>Initial System Ticks</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="13" column="1">
++            <item row="10" column="1">
+              <widget class="QComboBox" name="combo_init_ticks_type">
+               <item>
+                <property name="text">
+@@ -442,14 +358,14 @@ online features (if installed)</string>
+               </item>
+              </widget>
+             </item>
+-            <item row="14" column="0">
++            <item row="11" column="0">
+              <widget class="QLabel" name="label_init_ticks_value">
+               <property name="text">
+                <string>Initial System Ticks Override</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="14" column="1">
++            <item row="11" column="1">
+              <widget class="QLineEdit" name="edit_init_ticks_value">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+@@ -462,21 +378,21 @@ online features (if installed)</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="15" column="0">
++            <item row="12" column="0">
+              <widget class="QLabel" name="label_play_coins">
+               <property name="text">
+                <string>Play Coins</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="15" column="1">
++            <item row="12" column="1">
+              <widget class="QSpinBox" name="spinBox_play_coins">
+               <property name="maximum">
+                <number>300</number>
+               </property>
+              </widget>
+             </item>
+-            <item row="16" column="0">
++            <item row="13" column="0">
+               <widget class="QLabel" name="label_steps_per_hour">
+                 <property name="toolTip">
+                  <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Number of steps per hour reported by the pedometer. Range from 0 to 65,535.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+@@ -486,28 +402,28 @@ online features (if installed)</string>
+                 </property>
+               </widget>
+             </item>
+-            <item row="16" column="1">
++            <item row="13" column="1">
+               <widget class="QSpinBox" name="spinBox_steps_per_hour">
+                 <property name="maximum">
+                   <number>9999</number>
+                 </property>
+               </widget>
+             </item>
+-            <item row="17" column="1">
++            <item row="14" column="1">
+              <widget class="QCheckBox" name="toggle_system_setup">
+               <property name="text">
+                <string>Run System Setup when Home Menu is launched</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="18" column="0">
++            <item row="15" column="0">
+              <widget class="QLabel" name="label_console_id">
+               <property name="text">
+                <string>Console ID:</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="18" column="1">
++            <item row="15" column="1">
+              <widget class="QPushButton" name="button_regenerate_console_id">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+@@ -523,50 +439,114 @@ online features (if installed)</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="19" column="0">
+-              <widget class="QLabel" name="label_mac">
+-                <property name="text">
+-                  <string>MAC:</string>
+-                </property>
+-              </widget>
+-            </item>
+-            <item row="19" column="1">
+-              <widget class="QPushButton" name="button_regenerate_mac">
+-                <property name="sizePolicy">
+-                  <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+-                    <horstretch>0</horstretch>
+-                    <verstretch>0</verstretch>
+-                  </sizepolicy>
+-                </property>
+-                <property name="layoutDirection">
+-                  <enum>Qt::RightToLeft</enum>
+-                </property>
+-                <property name="text">
+-                  <string>Regenerate</string>
+-                </property>
+-              </widget>
+-            </item>
+-            <item row="20" column="0">
++            <item row="16" column="0">
+              <widget class="QLabel" name="label_plugin_loader">
+               <property name="text">
+                <string>3GX Plugin Loader:</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="20" column="1">
++            <item row="16" column="1">
+              <widget class="QCheckBox" name="plugin_loader">
+               <property name="text">
+                <string>Enable 3GX plugin loader</string>
+               </property>
+              </widget>
+             </item>
+-            <item row="21" column="1">
++            <item row="17" column="1">
+              <widget class="QCheckBox" name="allow_plugin_loader">
+               <property name="text">
+                <string>Allow applications to change plugin loader state</string>
+               </property>
+              </widget>
+             </item>
++            <item row="18" column="0">
++             <widget class="QLabel" name="label_nus_download">
++              <property name="text">
++               <string>Download System Files from Nintendo servers</string>
++              </property>
++             </widget>
++            </item>
++            <item row="18" column="1">
++             <widget class="QWidget" name="body_nus_download">
++              <layout class="QHBoxLayout" name="horizontalLayout_nus_download">
++               <item>
++                <widget class="QComboBox" name="combo_download_set">
++                 <item>
++                  <property name="text">
++                   <string>Minimal</string>
++                  </property>
++                 </item>
++                 <item>
++                  <property name="text">
++                   <string>Old 3DS</string>
++                  </property>
++                 </item>
++                 <item>
++                  <property name="text">
++                   <string>New 3DS</string>
++                  </property>
++                 </item>
++                </widget>
++               </item>
++               <item>
++                <widget class="QComboBox" name="combo_download_region">
++                 <item>
++                  <property name="text">
++                   <string>JPN</string>
++                  </property>
++                 </item>
++                 <item>
++                  <property name="text">
++                   <string>USA</string>
++                  </property>
++                 </item>
++                 <item>
++                  <property name="text">
++                   <string>EUR</string>
++                  </property>
++                 </item>
++                 <item>
++                  <property name="text">
++                   <string>AUS</string>
++                  </property>
++                 </item>
++                 <item>
++                  <property name="text">
++                   <string>CHN</string>
++                  </property>
++                 </item>
++                 <item>
++                  <property name="text">
++                   <string>KOR</string>
++                  </property>
++                 </item>
++                 <item>
++                  <property name="text">
++                   <string>TWN</string>
++                  </property>
++                 </item>
++                </widget>
++               </item>
++               <item>
++                <widget class="QPushButton" name="button_start_download">
++                 <property name="sizePolicy">
++                  <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
++                   <horstretch>0</horstretch>
++                   <verstretch>0</verstretch>
++                  </sizepolicy>
++                 </property>
++                 <property name="layoutDirection">
++                  <enum>Qt::RightToLeft</enum>
++                 </property>
++                 <property name="text">
++                  <string>Download</string>
++                 </property>
++                </widget>
++               </item>
++              </layout>
++             </widget>
++            </item>
+            </layout>
+           </widget>
+          </item>
+@@ -576,168 +556,97 @@ online features (if installed)</string>
+             <string>Real Console Unique Data</string>
+            </property>
+            <layout class="QGridLayout" name="gridLayout1">
+-            <item row="0" column="0" colspan="2">
+-             <widget class="QGroupBox" name="group_real_console_unique_data_core">
+-               <layout class="QGridLayout" name="gridLayout2">
+-                <item row="0" column="0" colspan="2">
+-                 <widget class="QWidget" name="linked_console">
+-                  <layout class="QHBoxLayout" name="horizontalLayout_linked_console">
+-                   <item>
+-                    <widget class="QLabel" name="label_linked_console">
+-                     <property name="text">
+-                       <string>Your real console is linked to Azahar.</string>
+-                     </property>
+-                    </widget>
+-                   </item>
+-                   <item>
+-                    <widget class="QPushButton" name="button_unlink_console">
+-                     <property name="sizePolicy">
+-                      <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+-                       <horstretch>0</horstretch>
+-                       <verstretch>0</verstretch>
+-                      </sizepolicy>
+-                     </property>
+-                     <property name="layoutDirection">
+-                      <enum>Qt::RightToLeft</enum>
+-                     </property>
+-                     <property name="text">
+-                      <string>Unlink</string>
+-                     </property>
+-                    </widget>
+-                   </item>
+-                  </layout>
+-                 </widget>
+-                </item>
+-                <item row="1" column="0">
+-                 <widget class="QLabel" name="label_otp">
+-                  <property name="text">
+-                   <string>OTP</string>
+-                  </property>
+-                 </widget>
+-                </item>
+-                <item row="1" column="1">
+-                 <widget class="QWidget" name="otp">
+-                  <layout class="QHBoxLayout" name="horizontalLayout_otp">
+-                   <item>
+-                    <widget class="QLabel" name="label_otp_status">
+-                     <property name="text">
+-                      <string/>
+-                     </property>
+-                    </widget>
+-                   </item>
+-                   <item>
+-                    <widget class="QPushButton" name="button_otp">
+-                     <property name="sizePolicy">
+-                      <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+-                       <horstretch>0</horstretch>
+-                       <verstretch>0</verstretch>
+-                      </sizepolicy>
+-                     </property>
+-                     <property name="layoutDirection">
+-                      <enum>Qt::RightToLeft</enum>
+-                     </property>
+-                     <property name="text">
+-                      <string>Choose</string>
+-                     </property>
+-                    </widget>
+-                   </item>
+-                  </layout>
+-                 </widget>
+-                </item>
+-                <item row="2" column="0">
+-                 <widget class="QLabel" name="label_secure_info">
+-                  <property name="text">
+-                   <string>SecureInfo_A/B</string>
+-                  </property>
+-                 </widget>
+-                </item>
+-                <item row="2" column="1">
+-                 <widget class="QWidget" name="secure_info">
+-                  <layout class="QHBoxLayout" name="horizontalLayout_secure_info">
+-                   <item>
+-                    <widget class="QLabel" name="label_secure_info_status">
+-                     <property name="text">
+-                      <string/>
+-                     </property>
+-                    </widget>
+-                   </item>
+-                   <item>
+-                    <widget class="QPushButton" name="button_secure_info">
+-                     <property name="sizePolicy">
+-                      <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+-                       <horstretch>0</horstretch>
+-                       <verstretch>0</verstretch>
+-                      </sizepolicy>
+-                     </property>
+-                     <property name="layoutDirection">
+-                      <enum>Qt::RightToLeft</enum>
+-                     </property>
+-                     <property name="text">
+-                      <string>Choose</string>
+-                     </property>
+-                    </widget>
+-                   </item>
+-                  </layout>
+-                 </widget>
+-                </item>
+-                <item row="3" column="0">
+-                 <widget class="QLabel" name="label_friend_code_seed">
+-                  <property name="text">
+-                   <string>LocalFriendCodeSeed_A/B</string>
+-                  </property>
+-                 </widget>
+-                </item>
+-                <item row="3" column="1">
+-                 <widget class="QWidget" name="friend_code_seed">
+-                  <layout class="QHBoxLayout" name="horizontalLayout_friend_code_seed">
+-                   <item>
+-                    <widget class="QLabel" name="label_friend_code_seed_status">
+-                     <property name="text">
+-                      <string/>
+-                     </property>
+-                    </widget>
+-                   </item>
+-                   <item>
+-                    <widget class="QPushButton" name="button_friend_code_seed">
+-                     <property name="sizePolicy">
+-                      <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+-                       <horstretch>0</horstretch>
+-                       <verstretch>0</verstretch>
+-                      </sizepolicy>
+-                     </property>
+-                     <property name="layoutDirection">
+-                      <enum>Qt::RightToLeft</enum>
+-                     </property>
+-                     <property name="text">
+-                      <string>Choose</string>
+-                     </property>
+-                    </widget>
+-                   </item>
+-                  </layout>
+-                 </widget>
+-                </item>
+-               </layout>
+-             </widget>
+-            </item>
+             <item row="1" column="0">
+-             <widget class="QLabel" name="label_movable">
++             <widget class="QLabel" name="label_secure_info">
+               <property name="text">
+-               <string>movable.sed</string>
++               <string>SecureInfo_A/B</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+-             <widget class="QWidget" name="movable">
+-              <layout class="QHBoxLayout" name="horizontalLayout_movable">
++             <widget class="QWidget" name="secure_info">
++              <layout class="QHBoxLayout" name="horizontalLayout_secure_info">
++               <item>
++                <widget class="QLabel" name="label_secure_info_status">
++                 <property name="text">
++                  <string/>
++                 </property>
++                </widget>
++               </item>
++               <item>
++                <widget class="QPushButton" name="button_secure_info">
++                 <property name="sizePolicy">
++                  <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
++                   <horstretch>0</horstretch>
++                   <verstretch>0</verstretch>
++                  </sizepolicy>
++                 </property>
++                 <property name="layoutDirection">
++                  <enum>Qt::RightToLeft</enum>
++                 </property>
++                 <property name="text">
++                  <string>Choose</string>
++                 </property>
++                </widget>
++               </item>
++              </layout>
++             </widget>
++            </item>
++            <item row="2" column="0">
++             <widget class="QLabel" name="label_friend_code_seed">
++              <property name="text">
++               <string>LocalFriendCodeSeed_A/B</string>
++              </property>
++             </widget>
++            </item>
++            <item row="2" column="1">
++             <widget class="QWidget" name="friend_code_seed">
++              <layout class="QHBoxLayout" name="horizontalLayout_friend_code_seed">
++               <item>
++                <widget class="QLabel" name="label_friend_code_seed_status">
++                 <property name="text">
++                  <string/>
++                 </property>
++                </widget>
++               </item>
++               <item>
++                <widget class="QPushButton" name="button_friend_code_seed">
++                 <property name="sizePolicy">
++                  <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
++                   <horstretch>0</horstretch>
++                   <verstretch>0</verstretch>
++                  </sizepolicy>
++                 </property>
++                 <property name="layoutDirection">
++                  <enum>Qt::RightToLeft</enum>
++                 </property>
++                 <property name="text">
++                  <string>Choose</string>
++                 </property>
++                </widget>
++               </item>
++              </layout>
++             </widget>
++            </item>
++            <item row="3" column="0">
++             <widget class="QLabel" name="label_ct_cert">
++              <property name="text">
++               <string>CTCert</string>
++              </property>
++             </widget>
++            </item>
++            <item row="3" column="1">
++             <widget class="QWidget" name="ct_cert">
++              <layout class="QHBoxLayout" name="horizontalLayout_ct_cert">
+                <item>
+-                <widget class="QLabel" name="label_movable_status">
++                <widget class="QLabel" name="label_ct_cert_status">
+                  <property name="text">
+                   <string/>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+-                <widget class="QPushButton" name="button_movable">
++                <widget class="QPushButton" name="button_ct_cert">
+                  <property name="sizePolicy">
+                   <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                    <horstretch>0</horstretch>
+@@ -802,7 +711,6 @@ online features (if installed)</string>
+   <tabstop>spinBox_play_coins</tabstop>
+   <tabstop>spinBox_steps_per_hour</tabstop>
+   <tabstop>button_regenerate_console_id</tabstop>
+-  <tabstop>button_regenerate_mac</tabstop>
+  </tabstops>
+  <resources/>
+  <connections/>
+diff --git a/src/core/hle/service/cfg/cfg.cpp b/src/core/hle/service/cfg/cfg.cpp
+index 4d04af017..8bd59dbf8 100644
+--- a/src/core/hle/service/cfg/cfg.cpp
++++ b/src/core/hle/service/cfg/cfg.cpp
+@@ -2,14 +2,7 @@
+ // Licensed under GPLv2 or any later version
+ // Refer to the license.txt file included.
+ 
+-#include <algorithm>
+-#include <array>
+-#include <tuple>
+-#include <boost/serialization/array.hpp>
+-#include <boost/serialization/unique_ptr.hpp>
+-#include <cryptopp/osrng.h>
+-#include <cryptopp/sha.h>
+-#include <fmt/ranges.h>
++#include "core/hle/service/cfg/cfg.h"
+ #include "common/archives.h"
+ #include "common/file_util.h"
+ #include "common/hacks/hack_manager.h"
+@@ -24,7 +17,6 @@
+ #include "core/hle/ipc_helpers.h"
+ #include "core/hle/kernel/process.h"
+ #include "core/hle/result.h"
+-#include "core/hle/service/cfg/cfg.h"
+ #include "core/hle/service/cfg/cfg_defaults.h"
+ #include "core/hle/service/cfg/cfg_i.h"
+ #include "core/hle/service/cfg/cfg_nor.h"
+@@ -32,14 +24,23 @@
+ #include "core/hle/service/cfg/cfg_u.h"
+ #include "core/hw/unique_data.h"
+ #include "core/loader/loader.h"
++#include <algorithm>
++#include <array>
++#include <boost/serialization/array.hpp>
++#include <boost/serialization/unique_ptr.hpp>
++#include <cryptopp/osrng.h>
++#include <cryptopp/sha.h>
++#include <fmt/ranges.h>
++#include <tuple>
+ 
+ SERVICE_CONSTRUCT_IMPL(Service::CFG::Module)
+ SERIALIZE_EXPORT_IMPL(Service::CFG::Module)
+ 
+ namespace Service::CFG {
+ 
+-template <class Archive>
+-void Module::serialize(Archive& ar, const unsigned int) {
++template<class Archive>
++void Module::serialize(Archive& ar, const unsigned int)
++{
+     DEBUG_SERIALIZATION_POINT;
+     ar & cfg_config_file_buffer;
+     ar & cfg_system_save_data_archive;
+@@ -55,7 +56,8 @@ constexpr u32 CONFIG_FILE_MAX_BLOCK_ENTRIES = 1479;
+ namespace {
+ 
+ /// Block header in the config savedata file
+-struct SaveConfigBlockEntry {
++struct SaveConfigBlockEntry
++{
+     u32 block_id;       ///< The id of the current block
+     u32 offset_or_data; ///< This is the absolute offset to the block data if the size is greater
+     /// than 4 bytes, otherwise it contains the data itself
+@@ -67,12 +69,13 @@ struct SaveConfigBlockEntry {
+  * The header of the config savedata file,
+  * contains information about the blocks in the file
+  */
+-struct SaveFileConfig {
++struct SaveFileConfig
++{
+     u16 total_entries;       ///< The total number of set entries in the config file
+     u16 data_entries_offset; ///< The offset where the data for the blocks start, this is hardcoded
+-                             /// to 0x455C as per hardware
++        /// to 0x455C as per hardware
+     SaveConfigBlockEntry block_entries[CONFIG_FILE_MAX_BLOCK_ENTRIES]; ///< The block headers, the
+-                                                                       /// maximum possible value is
++        /// maximum possible value is
+     /// 1479 as per hardware
+     u32 unknown; ///< This field is unknown, possibly padding, 0 has been observed in hardware
+ };
+@@ -81,7 +84,8 @@ static_assert(sizeof(SaveFileConfig) == 0x455C,
+ 
+ } // namespace
+ 
+-static constexpr u16 C(const char code[2]) {
++static constexpr u16 C(const char code[2])
++{
+     return code[0] | (code[1] << 8);
+ }
+ 
+@@ -340,22 +344,34 @@ static const std::array<u8, 187> default_subregion = {{
+ std::array<u8, 2> unknown;
+ 
+ constexpr std::array<u8, 8> cfg_system_savedata_id{
+-    0x00, 0x00, 0x00, 0x00, 0x17, 0x00, 0x01, 0x00,
++    0x00,
++    0x00,
++    0x00,
++    0x00,
++    0x17,
++    0x00,
++    0x01,
++    0x00,
+ };
+ 
+ Module::Interface::Interface(std::shared_ptr<Module> cfg, const char* name, u32 max_session)
+-    : ServiceFramework(name, max_session), cfg(std::move(cfg)) {}
++    : ServiceFramework(name, max_session)
++    , cfg(std::move(cfg))
++{}
+ 
+ Module::Interface::~Interface() = default;
+ 
+-void Module::Interface::GetCountryCodeString(Kernel::HLERequestContext& ctx) {
++void Module::Interface::GetCountryCodeString(Kernel::HLERequestContext& ctx)
++{
+     IPC::RequestParser rp(ctx);
+     u16 country_code_id = rp.Pop<u16>();
+ 
+     IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
+     if (country_code_id >= country_codes.size() || 0 == country_codes[country_code_id]) {
+         LOG_ERROR(Service_CFG, "requested country code id={} is invalid", country_code_id);
+-        rb.Push(Result(ErrorDescription::NotFound, ErrorModule::Config, ErrorSummary::WrongArgument,
++        rb.Push(Result(ErrorDescription::NotFound,
++                       ErrorModule::Config,
++                       ErrorSummary::WrongArgument,
+                        ErrorLevel::Permanent));
+         rb.Skip(1, false);
+         return;
+@@ -366,11 +382,13 @@ void Module::Interface::GetCountryCodeString(Kernel::HLERequestContext& ctx) {
+     rb.Push<u32>(country_codes[country_code_id]);
+ }
+ 
+-std::shared_ptr<Module> Module::Interface::Interface::GetModule() const {
++std::shared_ptr<Module> Module::Interface::Interface::GetModule() const
++{
+     return cfg;
+ }
+ 
+-void Module::Interface::GetCountryCodeID(Kernel::HLERequestContext& ctx) {
++void Module::Interface::GetCountryCodeID(Kernel::HLERequestContext& ctx)
++{
+     IPC::RequestParser rp(ctx);
+     u16 country_code = rp.Pop<u16>();
+     u16 country_code_id = 0;
+@@ -387,9 +405,13 @@ void Module::Interface::GetCountryCodeID(Kernel::HLERequestContext& ctx) {
+ 
+     IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
+     if (0 == country_code_id) {
+-        LOG_ERROR(Service_CFG, "requested country code name={}{} is invalid",
+-                  static_cast<char>(country_code & 0xff), static_cast<char>(country_code >> 8));
+-        rb.Push(Result(ErrorDescription::NotFound, ErrorModule::Config, ErrorSummary::WrongArgument,
++        LOG_ERROR(Service_CFG,
++                  "requested country code name={}{} is invalid",
++                  static_cast<char>(country_code & 0xff),
++                  static_cast<char>(country_code >> 8));
++        rb.Push(Result(ErrorDescription::NotFound,
++                       ErrorModule::Config,
++                       ErrorSummary::WrongArgument,
+                        ErrorLevel::Permanent));
+         rb.Push<u16>(0x00FF);
+         return;
+@@ -399,7 +421,8 @@ void Module::Interface::GetCountryCodeID(Kernel::HLERequestContext& ctx) {
+     rb.Push<u16>(country_code_id);
+ }
+ 
+-u32 Module::GetRegionValue(bool from_secure_info) {
++u32 Module::GetRegionValue(bool from_secure_info)
++{
+     if (from_secure_info) {
+         auto& sec_info = HW::UniqueData::GetSecureInfoA();
+         if (sec_info.IsValid()) {
+@@ -415,17 +438,18 @@ u32 Module::GetRegionValue(bool from_secure_info) {
+     return Settings::values.region_value.GetValue();
+ }
+ 
+-bool Module::IsValidRegionCountry(u32 region, u8 country_code) {
++bool Module::IsValidRegionCountry(u32 region, u8 country_code)
++{
+     switch (region) {
+     case 0: // JPN
+         return country_code == 1;
+     case 1: // USA
+-        return (country_code >= 8 && country_code <= 52) || country_code == 153 ||
+-               country_code == 156 || country_code == 168 || country_code == 174;
++        return (country_code >= 8 && country_code <= 52) || country_code == 153
++               || country_code == 156 || country_code == 168 || country_code == 174;
+     case 2: // EUR
+     case 3: // AUS
+-        return (country_code >= 64 && country_code <= 127) ||
+-               (country_code >= 184 && country_code <= 186) || country_code == 169;
++        return (country_code >= 64 && country_code <= 127)
++               || (country_code >= 184 && country_code <= 186) || country_code == 169;
+     case 4: // CHN
+         return country_code == 144 || country_code == 145 || country_code == 160;
+     case 5: // KOR
+@@ -438,21 +462,26 @@ bool Module::IsValidRegionCountry(u32 region, u8 country_code) {
+     return false;
+ }
+ 
+-void Module::Interface::GetRegion(Kernel::HLERequestContext& ctx) {
++void Module::Interface::GetRegion(Kernel::HLERequestContext& ctx)
++{
+     IPC::RequestParser rp(ctx);
+ 
+     u64 caller_tid = ctx.ClientThread()->owner_process.lock()->codeset->program_id;
+-    bool from_secure_info = Common::Hacks::hack_manager.OverrideBooleanSetting(
+-        Common::Hacks::HackType::REGION_FROM_SECURE, caller_tid, false);
++    bool from_secure_info = Common::Hacks::hack_manager
++                                .OverrideBooleanSetting(Common::Hacks::HackType::REGION_FROM_SECURE,
++                                                        caller_tid,
++                                                        false);
+ 
+     IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
+     rb.Push(ResultSuccess);
+     rb.Push<u8>(static_cast<u8>(cfg->GetRegionValue(from_secure_info)));
+ }
+ 
+-void Module::Interface::SecureInfoGetByte101(Kernel::HLERequestContext& ctx) {
++void Module::Interface::SecureInfoGetByte101(Kernel::HLERequestContext& ctx)
++{
+     IPC::RequestParser rp(ctx);
+ 
++#ifdef todotodo
+     const auto& secure_info_a = HW::UniqueData::GetSecureInfoA();
+     const auto& local_friend_code_seed_b = HW::UniqueData::GetLocalFriendCodeSeedB();
+ 
+@@ -460,26 +489,38 @@ void Module::Interface::SecureInfoGetByte101(Kernel::HLERequestContext& ctx) {
+     // Always make sure to have available both secure data kinds or error otherwise.
+     if (!secure_info_a.IsValid() || !local_friend_code_seed_b.IsValid()) {
+         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+-        rb.Push(Result(ErrorDescription::NotFound, ErrorModule::Config, ErrorSummary::InvalidState,
++        rb.Push(Result(ErrorDescription::NotFound,
++                       ErrorModule::Config,
++                       ErrorSummary::InvalidState,
+                        ErrorLevel::Permanent));
+     }
+ 
+     u8 ret = secure_info_a.body.unknown;
++#else
++    u8 ret = 0;
++    if (cfg->secure_info_a_loaded) {
++        ret = cfg->secure_info_a.unknown;
++    }
++#endif
+ 
+     IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
+     rb.Push(ResultSuccess);
+     rb.Push<u8>(ret);
+ }
+ 
+-void Module::Interface::SecureInfoGetSerialNo(Kernel::HLERequestContext& ctx) {
++#ifdef todotodo
++void Module::Interface::SecureInfoGetSerialNo(Kernel::HLERequestContext& ctx)
++{
+     IPC::RequestParser rp(ctx);
+     [[maybe_unused]] u32 out_size = rp.Pop<u32>();
+     auto out_buffer = rp.PopMappedBuffer();
+ 
+     if (out_buffer.GetSize() < sizeof(HW::UniqueData::SecureInfoA::body.serial_number)) {
+         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+-        rb.Push(Result(ErrorDescription::InvalidSize, ErrorModule::Config,
+-                       ErrorSummary::WrongArgument, ErrorLevel::Permanent));
++        rb.Push(Result(ErrorDescription::InvalidSize,
++                       ErrorModule::Config,
++                       ErrorSummary::WrongArgument,
++                       ErrorLevel::Permanent));
+     }
+ 
+     const auto& secure_info_a = HW::UniqueData::GetSecureInfoA();
+@@ -489,19 +530,54 @@ void Module::Interface::SecureInfoGetSerialNo(Kernel::HLERequestContext& ctx) {
+     // Always make sure to have available both secure data kinds or error otherwise.
+     if (!secure_info_a.IsValid() || !local_friend_code_seed_b.IsValid()) {
+         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+-        rb.Push(Result(ErrorDescription::NotFound, ErrorModule::Config, ErrorSummary::InvalidState,
++        rb.Push(Result(ErrorDescription::NotFound,
++                       ErrorModule::Config,
++                       ErrorSummary::InvalidState,
+                        ErrorLevel::Permanent));
+     }
+ 
+-    out_buffer.Write(secure_info_a.body.serial_number.data(), 0,
++    out_buffer.Write(secure_info_a.body.serial_number.data(),
++                     0,
+                      sizeof(HW::UniqueData::SecureInfoA::body.serial_number));
+ 
+     IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
+     rb.Push(ResultSuccess);
+     rb.PushMappedBuffer(out_buffer);
+ }
++#else
++void Module::Interface::SecureInfoGetSerialNo(Kernel::HLERequestContext& ctx)
++{
++    IPC::RequestParser rp(ctx);
++    [[maybe_unused]] u32 out_size = rp.Pop<u32>();
++    auto out_buffer = rp.PopMappedBuffer();
++
++    if (out_buffer.GetSize() < sizeof(SecureInfoA::serial_number)) {
++        IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
++        rb.Push(Result(ErrorDescription::InvalidSize,
++                       ErrorModule::Config,
++                       ErrorSummary::WrongArgument,
++                       ErrorLevel::Permanent));
++    }
++    // Never happens on real hardware, but may happen if user didn't supply a dump.
++    // Always make sure to have available both secure data kinds or error otherwise.
++    if (!cfg->secure_info_a_loaded || !cfg->local_friend_code_seed_b_loaded) {
++        IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
++        rb.Push(Result(ErrorDescription::NotFound,
++                       ErrorModule::Config,
++                       ErrorSummary::InvalidState,
++                       ErrorLevel::Permanent));
++    }
++
++    out_buffer.Write(&cfg->secure_info_a.serial_number, 0, sizeof(SecureInfoA::serial_number));
+ 
+-void Module::Interface::SetUUIDClockSequence(Kernel::HLERequestContext& ctx) {
++    IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
++    rb.Push(ResultSuccess);
++    rb.PushMappedBuffer(out_buffer);
++}
++#endif
++
++void Module::Interface::SetUUIDClockSequence(Kernel::HLERequestContext& ctx)
++{
+     IPC::RequestParser rp(ctx);
+ 
+     cfg->mcu_data.clock_sequence = rp.Pop<u16>();
+@@ -511,7 +587,8 @@ void Module::Interface::SetUUIDClockSequence(Kernel::HLERequestContext& ctx) {
+     rb.Push(ResultSuccess);
+ }
+ 
+-void Module::Interface::GetUUIDClockSequence(Kernel::HLERequestContext& ctx) {
++void Module::Interface::GetUUIDClockSequence(Kernel::HLERequestContext& ctx)
++{
+     IPC::RequestParser rp(ctx);
+ 
+     IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
+@@ -519,15 +596,18 @@ void Module::Interface::GetUUIDClockSequence(Kernel::HLERequestContext& ctx) {
+     rb.Push<u16>(static_cast<u16>(cfg->mcu_data.clock_sequence));
+ }
+ 
+-void Module::Interface::GetTransferableId(Kernel::HLERequestContext& ctx) {
++void Module::Interface::GetTransferableId(Kernel::HLERequestContext& ctx)
++{
+     IPC::RequestParser rp(ctx);
+     const u32 app_id_salt = rp.Pop<u32>() & 0x000FFFFF;
+ 
+     IPC::RequestBuilder rb = rp.MakeBuilder(3, 0);
+ 
+     std::array<u8, 12> buffer;
+-    const Result result =
+-        cfg->GetConfigBlock(ConsoleUniqueID2BlockID, 8, AccessFlag::Global, buffer.data());
++    const Result result = cfg->GetConfigBlock(ConsoleUniqueID2BlockID,
++                                              8,
++                                              AccessFlag::Global,
++                                              buffer.data());
+     rb.Push(result);
+     if (result.IsSuccess()) {
+         std::memcpy(&buffer[8], &app_id_salt, sizeof(u32));
+@@ -546,15 +626,18 @@ void Module::Interface::GetTransferableId(Kernel::HLERequestContext& ctx) {
+     LOG_DEBUG(Service_CFG, "called app_id_salt=0x{:X}", app_id_salt);
+ }
+ 
+-void Module::Interface::IsCoppacsSupported(Kernel::HLERequestContext& ctx) {
++void Module::Interface::IsCoppacsSupported(Kernel::HLERequestContext& ctx)
++{
+     IPC::RequestParser rp(ctx);
+     IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
+ 
+     rb.Push(ResultSuccess);
+ 
+     u64 caller_tid = ctx.ClientThread()->owner_process.lock()->codeset->program_id;
+-    bool from_secure_info = Common::Hacks::hack_manager.OverrideBooleanSetting(
+-        Common::Hacks::HackType::REGION_FROM_SECURE, caller_tid, false);
++    bool from_secure_info = Common::Hacks::hack_manager
++                                .OverrideBooleanSetting(Common::Hacks::HackType::REGION_FROM_SECURE,
++                                                        caller_tid,
++                                                        false);
+ 
+     u8 canada_or_usa = 1;
+     if (canada_or_usa == cfg->GetRegionValue(from_secure_info)) {
+@@ -564,42 +647,49 @@ void Module::Interface::IsCoppacsSupported(Kernel::HLERequestContext& ctx) {
+     }
+ }
+ 
+-void Module::Interface::GetSystemModel(Kernel::HLERequestContext& ctx) {
++void Module::Interface::GetSystemModel(Kernel::HLERequestContext& ctx)
++{
+     IPC::RequestParser rp(ctx);
+     IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
+     u32 data{};
+ 
+     // TODO(Subv): Find out the correct error codes
+-    rb.Push(cfg->GetConfigBlock(ConsoleModelBlockID, 4, AccessFlag::SystemRead,
++    rb.Push(cfg->GetConfigBlock(ConsoleModelBlockID,
++                                4,
++                                AccessFlag::SystemRead,
+                                 reinterpret_cast<u8*>(&data)));
+     ConsoleModelInfo model;
+     std::memcpy(&model, &data, 4);
+-    if ((model.model == NINTENDO_3DS || model.model == NINTENDO_3DS_XL ||
+-         model.model == NINTENDO_2DS) &&
+-        Settings::values.is_new_3ds) {
++    if ((model.model == NINTENDO_3DS || model.model == NINTENDO_3DS_XL
++         || model.model == NINTENDO_2DS)
++        && Settings::values.is_new_3ds) {
+         model.model = NEW_NINTENDO_3DS_XL;
+-    } else if ((model.model == NEW_NINTENDO_3DS || model.model == NEW_NINTENDO_3DS_XL ||
+-                model.model == NEW_NINTENDO_2DS_XL) &&
+-               !Settings::values.is_new_3ds) {
++    } else if ((model.model == NEW_NINTENDO_3DS || model.model == NEW_NINTENDO_3DS_XL
++                || model.model == NEW_NINTENDO_2DS_XL)
++               && !Settings::values.is_new_3ds) {
+         model.model = NINTENDO_3DS_XL;
+     }
+     std::memcpy(&data, &model, 4);
+     rb.Push<u8>(data & 0xFF);
+ }
+ 
+-void Module::Interface::GetModelNintendo2DS(Kernel::HLERequestContext& ctx) {
++void Module::Interface::GetModelNintendo2DS(Kernel::HLERequestContext& ctx)
++{
+     IPC::RequestParser rp(ctx);
+     IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
+     u32 data{};
+ 
+     // TODO(Subv): Find out the correct error codes
+-    rb.Push(cfg->GetConfigBlock(ConsoleModelBlockID, 4, AccessFlag::SystemRead,
++    rb.Push(cfg->GetConfigBlock(ConsoleModelBlockID,
++                                4,
++                                AccessFlag::SystemRead,
+                                 reinterpret_cast<u8*>(&data)));
+     u8 model = data & 0xFF;
+     rb.Push(model != Service::CFG::NINTENDO_2DS);
+ }
+ 
+-void Module::Interface::GetConfig(Kernel::HLERequestContext& ctx) {
++void Module::Interface::GetConfig(Kernel::HLERequestContext& ctx)
++{
+     IPC::RequestParser rp(ctx);
+     u32 size = rp.Pop<u32>();
+     u32 block_id = rp.Pop<u32>();
+@@ -612,7 +702,8 @@ void Module::Interface::GetConfig(Kernel::HLERequestContext& ctx) {
+     rb.PushMappedBuffer(buffer);
+ }
+ 
+-void Module::Interface::GetSystemConfig(Kernel::HLERequestContext& ctx) {
++void Module::Interface::GetSystemConfig(Kernel::HLERequestContext& ctx)
++{
+     IPC::RequestParser rp(ctx);
+     u32 size = rp.Pop<u32>();
+     u32 block_id = rp.Pop<u32>();
+@@ -625,7 +716,8 @@ void Module::Interface::GetSystemConfig(Kernel::HLERequestContext& ctx) {
+     rb.PushMappedBuffer(buffer);
+ }
+ 
+-void Module::Interface::SetSystemConfig(Kernel::HLERequestContext& ctx) {
++void Module::Interface::SetSystemConfig(Kernel::HLERequestContext& ctx)
++{
+     IPC::RequestParser rp(ctx);
+     u32 block_id = rp.Pop<u32>();
+     u32 size = rp.Pop<u32>();
+@@ -639,21 +731,26 @@ void Module::Interface::SetSystemConfig(Kernel::HLERequestContext& ctx) {
+     rb.PushMappedBuffer(buffer);
+ }
+ 
+-void Module::Interface::UpdateConfigNANDSavegame(Kernel::HLERequestContext& ctx) {
++void Module::Interface::UpdateConfigNANDSavegame(Kernel::HLERequestContext& ctx)
++{
+     IPC::RequestParser rp(ctx);
+     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+     rb.Push(cfg->UpdateConfigNANDSavegame());
+ }
+ 
+-void Module::Interface::GetLocalFriendCodeSeedData(Kernel::HLERequestContext& ctx) {
++#ifdef todotodo
++void Module::Interface::GetLocalFriendCodeSeedData(Kernel::HLERequestContext& ctx)
++{
+     IPC::RequestParser rp(ctx);
+     [[maybe_unused]] u32 out_size = rp.Pop<u32>();
+     auto out_buffer = rp.PopMappedBuffer();
+     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+ 
+     if (out_buffer.GetSize() < sizeof(HW::UniqueData::LocalFriendCodeSeedB)) {
+-        rb.Push(Result(ErrorDescription::InvalidSize, ErrorModule::Config,
+-                       ErrorSummary::WrongArgument, ErrorLevel::Permanent));
++        rb.Push(Result(ErrorDescription::InvalidSize,
++                       ErrorModule::Config,
++                       ErrorSummary::WrongArgument,
++                       ErrorLevel::Permanent));
+     }
+ 
+     const auto& secure_info_a = HW::UniqueData::GetSecureInfoA();
+@@ -662,7 +759,9 @@ void Module::Interface::GetLocalFriendCodeSeedData(Kernel::HLERequestContext& ct
+     // Never happens on real hardware, but may happen if user didn't supply a dump.
+     // Always make sure to have available both secure data kinds or error otherwise.
+     if (!secure_info_a.IsValid() || !local_friend_code_seed_b.IsValid()) {
+-        rb.Push(Result(ErrorDescription::NotFound, ErrorModule::Config, ErrorSummary::InvalidState,
++        rb.Push(Result(ErrorDescription::NotFound,
++                       ErrorModule::Config,
++                       ErrorSummary::InvalidState,
+                        ErrorLevel::Permanent));
+     }
+ 
+@@ -670,7 +769,8 @@ void Module::Interface::GetLocalFriendCodeSeedData(Kernel::HLERequestContext& ct
+     rb.Push(ResultSuccess);
+ }
+ 
+-void Module::Interface::GetLocalFriendCodeSeed(Kernel::HLERequestContext& ctx) {
++void Module::Interface::GetLocalFriendCodeSeed(Kernel::HLERequestContext& ctx)
++{
+     IPC::RequestParser rp(ctx);
+ 
+     const auto& secure_info_a = HW::UniqueData::GetSecureInfoA();
+@@ -680,7 +780,9 @@ void Module::Interface::GetLocalFriendCodeSeed(Kernel::HLERequestContext& ctx) {
+     // Always make sure to have available both secure data kinds or error otherwise.
+     if (!secure_info_a.IsValid() || !local_friend_code_seed_b.IsValid()) {
+         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+-        rb.Push(Result(ErrorDescription::NotFound, ErrorModule::Config, ErrorSummary::InvalidState,
++        rb.Push(Result(ErrorDescription::NotFound,
++                       ErrorModule::Config,
++                       ErrorSummary::InvalidState,
+                        ErrorLevel::Permanent));
+     }
+ 
+@@ -688,66 +790,138 @@ void Module::Interface::GetLocalFriendCodeSeed(Kernel::HLERequestContext& ctx) {
+     rb.Push(ResultSuccess);
+     rb.Push<u64>(local_friend_code_seed_b.body.friend_code_seed);
+ }
++#else
++void Module::Interface::GetLocalFriendCodeSeedData(Kernel::HLERequestContext& ctx)
++{
++    IPC::RequestParser rp(ctx);
++    [[maybe_unused]] u32 out_size = rp.Pop<u32>();
++    auto out_buffer = rp.PopMappedBuffer();
++    IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
++
++    if (out_buffer.GetSize() < sizeof(LocalFriendCodeSeedB)) {
++        rb.Push(Result(ErrorDescription::InvalidSize,
++                       ErrorModule::Config,
++                       ErrorSummary::WrongArgument,
++                       ErrorLevel::Permanent));
++    }
++    // Never happens on real hardware, but may happen if user didn't supply a dump.
++    // Always make sure to have available both secure data kinds or error otherwise.
++    if (!cfg->secure_info_a_loaded || !cfg->local_friend_code_seed_b_loaded) {
++        rb.Push(Result(ErrorDescription::NotFound,
++                       ErrorModule::Config,
++                       ErrorSummary::InvalidState,
++                       ErrorLevel::Permanent));
++    }
++
++    out_buffer.Write(&cfg->local_friend_code_seed_b, 0, sizeof(LocalFriendCodeSeedB));
++    rb.Push(ResultSuccess);
++}
++
++void Module::Interface::GetLocalFriendCodeSeed(Kernel::HLERequestContext& ctx)
++{
++    IPC::RequestParser rp(ctx);
++
++    // Never happens on real hardware, but may happen if user didn't supply a dump.
++    // Always make sure to have available both secure data kinds or error otherwise.
++    if (!cfg->secure_info_a_loaded || !cfg->local_friend_code_seed_b_loaded) {
++        IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
++        rb.Push(Result(ErrorDescription::NotFound,
++                       ErrorModule::Config,
++                       ErrorSummary::InvalidState,
++                       ErrorLevel::Permanent));
++    }
++
++    IPC::RequestBuilder rb = rp.MakeBuilder(3, 0);
++    rb.Push(ResultSuccess);
++    rb.Push<u64>(cfg->local_friend_code_seed_b.friend_code_seed);
++}
++#endif
+ 
+-void Module::Interface::FormatConfig(Kernel::HLERequestContext& ctx) {
++void Module::Interface::FormatConfig(Kernel::HLERequestContext& ctx)
++{
+     IPC::RequestParser rp(ctx);
+     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+     rb.Push(cfg->FormatConfig());
+ }
+ 
+-ResultVal<void*> Module::GetConfigBlockPointer(u32 block_id, u32 size, AccessFlag accesss_flag) {
++ResultVal<void*> Module::GetConfigBlockPointer(u32 block_id, u32 size, AccessFlag accesss_flag)
++{
+     // Read the header
+     auto config = reinterpret_cast<SaveFileConfig*>(cfg_config_file_buffer.data());
+-    auto itr =
+-        std::find_if(std::begin(config->block_entries), std::end(config->block_entries),
+-                     [&](const SaveConfigBlockEntry& entry) { return entry.block_id == block_id; });
++    auto itr = std::find_if(std::begin(config->block_entries),
++                            std::end(config->block_entries),
++                            [&](const SaveConfigBlockEntry& entry) {
++                                return entry.block_id == block_id;
++                            });
+ 
+     if (itr == std::end(config->block_entries)) {
+         if (HasDefaultConfigBlock(static_cast<ConfigBlockID>(block_id))) {
+             LOG_WARNING(Service_CFG,
+                         "Config block 0x{:X} with flags {} and size {} was not found, creating "
+                         "from defaults.",
+-                        block_id, accesss_flag, size);
++                        block_id,
++                        accesss_flag,
++                        size);
+             const auto& default_block = GetDefaultConfigBlock(static_cast<ConfigBlockID>(block_id));
+-            auto result = CreateConfigBlock(block_id, static_cast<u16>(default_block.data.size()),
+-                                            default_block.access_flags, default_block.data.data());
++            auto result = CreateConfigBlock(block_id,
++                                            static_cast<u16>(default_block.data.size()),
++                                            default_block.access_flags,
++                                            default_block.data.data());
+             if (!result.IsSuccess()) {
+                 LOG_ERROR(Service_CFG,
+-                          "Failed to create config block 0x{:X} from defaults: 0x{:08X}", block_id,
++                          "Failed to create config block 0x{:X} from defaults: 0x{:08X}",
++                          block_id,
+                           result.raw);
+                 return result;
+             }
+             result = UpdateConfigNANDSavegame();
+             if (!result.IsSuccess()) {
+-                LOG_ERROR(Service_CFG, "Failed to save updated config savegame: 0x{:08X}",
++                LOG_ERROR(Service_CFG,
++                          "Failed to save updated config savegame: 0x{:08X}",
+                           result.raw);
+                 return result;
+             }
+-            itr = std::find_if(
+-                std::begin(config->block_entries), std::end(config->block_entries),
+-                [&](const SaveConfigBlockEntry& entry) { return entry.block_id == block_id; });
++            itr = std::find_if(std::begin(config->block_entries),
++                               std::end(config->block_entries),
++                               [&](const SaveConfigBlockEntry& entry) {
++                                   return entry.block_id == block_id;
++                               });
+         } else {
+             LOG_ERROR(Service_CFG,
+                       "Config block 0x{:X} with flags {} and size {} was not found, and no default "
+                       "exists.",
+-                      block_id, accesss_flag, size);
+-            return Result(ErrorDescription::NotFound, ErrorModule::Config,
+-                          ErrorSummary::WrongArgument, ErrorLevel::Permanent);
++                      block_id,
++                      accesss_flag,
++                      size);
++            return Result(ErrorDescription::NotFound,
++                          ErrorModule::Config,
++                          ErrorSummary::WrongArgument,
++                          ErrorLevel::Permanent);
+         }
+     }
+ 
+     if (False(itr->access_flags & accesss_flag)) {
+-        LOG_ERROR(Service_CFG, "Invalid access flag {:X} for config block 0x{:X} with size {}",
+-                  accesss_flag, block_id, size);
+-        return Result(ErrorDescription::NotAuthorized, ErrorModule::Config,
+-                      ErrorSummary::WrongArgument, ErrorLevel::Permanent);
++        LOG_ERROR(Service_CFG,
++                  "Invalid access flag {:X} for config block 0x{:X} with size {}",
++                  accesss_flag,
++                  block_id,
++                  size);
++        return Result(ErrorDescription::NotAuthorized,
++                      ErrorModule::Config,
++                      ErrorSummary::WrongArgument,
++                      ErrorLevel::Permanent);
+     }
+ 
+     if (itr->size != size) {
+-        LOG_ERROR(Service_CFG, "Invalid size {} for config block 0x{:X} with flags {}", size,
+-                  block_id, accesss_flag);
+-        return Result(ErrorDescription::InvalidSize, ErrorModule::Config,
+-                      ErrorSummary::WrongArgument, ErrorLevel::Permanent);
++        LOG_ERROR(Service_CFG,
++                  "Invalid size {} for config block 0x{:X} with flags {}",
++                  size,
++                  block_id,
++                  accesss_flag);
++        return Result(ErrorDescription::InvalidSize,
++                      ErrorModule::Config,
++                      ErrorSummary::WrongArgument,
++                      ErrorLevel::Permanent);
+     }
+ 
+     void* pointer;
+@@ -761,10 +935,12 @@ ResultVal<void*> Module::GetConfigBlockPointer(u32 block_id, u32 size, AccessFla
+     return pointer;
+ }
+ 
+-Result Module::GetConfigBlock(u32 block_id, u32 size, AccessFlag accesss_flag, void* output) {
+-    bool get_from_artic =
+-        block_id == ConsoleUniqueID2BlockID &&
+-        (static_cast<u16>(accesss_flag) & static_cast<u16>(AccessFlag::UserRead)) != 0;
++Result Module::GetConfigBlock(u32 block_id, u32 size, AccessFlag accesss_flag, void* output)
++{
++    bool get_from_artic = block_id == ConsoleUniqueID2BlockID
++                          && (static_cast<u16>(accesss_flag)
++                              & static_cast<u16>(AccessFlag::UserRead))
++                                 != 0;
+ 
+     if (get_from_artic && artic_client.get()) {
+         auto req = artic_client->NewRequest("CFGU_GetConfigInfoBlk2");
+@@ -800,15 +976,16 @@ Result Module::GetConfigBlock(u32 block_id, u32 size, AccessFlag accesss_flag, v
+     }
+ }
+ 
+-Result Module::SetConfigBlock(u32 block_id, u32 size, AccessFlag accesss_flag, const void* input) {
++Result Module::SetConfigBlock(u32 block_id, u32 size, AccessFlag accesss_flag, const void* input)
++{
+     void* pointer = nullptr;
+     CASCADE_RESULT(pointer, GetConfigBlockPointer(block_id, size, accesss_flag));
+     std::memcpy(pointer, input, size);
+     return ResultSuccess;
+ }
+ 
+-Result Module::CreateConfigBlock(u32 block_id, u16 size, AccessFlag access_flags,
+-                                 const void* data) {
++Result Module::CreateConfigBlock(u32 block_id, u16 size, AccessFlag access_flags, const void* data)
++{
+     SaveFileConfig* config = reinterpret_cast<SaveFileConfig*>(cfg_config_file_buffer.data());
+     if (config->total_entries >= CONFIG_FILE_MAX_BLOCK_ENTRIES)
+         return ResultUnknown; // TODO(Subv): Find the right error code
+@@ -840,12 +1017,14 @@ Result Module::CreateConfigBlock(u32 block_id, u16 size, AccessFlag access_flags
+     return ResultSuccess;
+ }
+ 
+-Result Module::DeleteConfigNANDSaveFile() {
++Result Module::DeleteConfigNANDSaveFile()
++{
+     FileSys::Path path("/config");
+     return cfg_system_save_data_archive->DeleteFile(path);
+ }
+ 
+-Result Module::UpdateConfigNANDSavegame() {
++Result Module::UpdateConfigNANDSavegame()
++{
+     LOG_DEBUG(Service_CFG, "Saving config file to NAND");
+ 
+     FileSys::Mode mode = {};
+@@ -863,7 +1042,18 @@ Result Module::UpdateConfigNANDSavegame() {
+     return ResultSuccess;
+ }
+ 
+-Result Module::FormatConfig() {
++std::string Module::GetLocalFriendCodeSeedBPath()
++{
++    return FileUtil::GetUserPath(FileUtil::UserPath::NANDDir) + "rw/sys/LocalFriendCodeSeed_B";
++}
++
++std::string Module::GetSecureInfoAPath()
++{
++    return FileUtil::GetUserPath(FileUtil::UserPath::NANDDir) + "rw/sys/SecureInfo_A";
++}
++
++Result Module::FormatConfig()
++{
+     Result res = DeleteConfigNANDSaveFile();
+     // The delete command fails if the file doesn't exist, so we have to check that too
+     if (!res.IsSuccess() && res != FileSys::ResultFileNotFound) {
+@@ -879,8 +1069,10 @@ Result Module::FormatConfig() {
+     // Fill the config with default block data.
+     auto default_blocks = GetDefaultConfigBlocks();
+     for (auto& entry : default_blocks) {
+-        res = CreateConfigBlock(entry.first, static_cast<u16>(entry.second.data.size()),
+-                                entry.second.access_flags, entry.second.data.data());
++        res = CreateConfigBlock(entry.first,
++                                static_cast<u16>(entry.second.data.size()),
++                                entry.second.access_flags,
++                                entry.second.data.data());
+         if (!res.IsSuccess()) {
+             return res;
+         }
+@@ -899,7 +1091,8 @@ Result Module::FormatConfig() {
+     return ResultSuccess;
+ }
+ 
+-Result Module::LoadConfigNANDSaveFile() {
++Result Module::LoadConfigNANDSaveFile()
++{
+     LOG_DEBUG(Service_CFG, "Loading config file from NAND");
+ 
+     const std::string& nand_directory = FileUtil::GetUserPath(FileUtil::UserPath::NANDDir);
+@@ -938,12 +1131,67 @@ Result Module::LoadConfigNANDSaveFile() {
+     return FormatConfig();
+ }
+ 
+-void Module::LoadMCUConfig() {
+-    FileUtil::IOFile mcu_data_file(
+-        fmt::format("{}/mcu.dat", FileUtil::GetUserPath(FileUtil::UserPath::SysDataDir)), "rb");
++void Module::InvalidateSecureData()
++{
++    secure_info_a_loaded = local_friend_code_seed_b_loaded = false;
++}
++
++SecureDataLoadStatus Module::LoadSecureInfoAFile()
++{
++    if (secure_info_a_loaded) {
++        return SecureDataLoadStatus::Loaded;
++    }
++    std::string file_path = GetSecureInfoAPath();
++    if (!FileUtil::Exists(file_path)) {
++        return SecureDataLoadStatus::NotFound;
++    }
++    FileUtil::IOFile file(file_path, "rb");
++    if (!file.IsOpen()) {
++        return SecureDataLoadStatus::IOError;
++    }
++    if (file.GetSize() != sizeof(SecureInfoA)) {
++        return SecureDataLoadStatus::Invalid;
++    }
++    if (file.ReadBytes(&secure_info_a, sizeof(SecureInfoA)) != sizeof(SecureInfoA)) {
++        return SecureDataLoadStatus::IOError;
++    }
++    secure_info_a_loaded = true;
++    return SecureDataLoadStatus::Loaded;
++}
++
++SecureDataLoadStatus Module::LoadLocalFriendCodeSeedBFile()
++{
++    if (local_friend_code_seed_b_loaded) {
++        return SecureDataLoadStatus::Loaded;
++    }
++    std::string file_path = GetLocalFriendCodeSeedBPath();
++    if (!FileUtil::Exists(file_path)) {
++        return SecureDataLoadStatus::NotFound;
++    }
++    FileUtil::IOFile file(file_path, "rb");
++    if (!file.IsOpen()) {
++        return SecureDataLoadStatus::IOError;
++    }
++    if (file.GetSize() != sizeof(LocalFriendCodeSeedB)) {
++        return SecureDataLoadStatus::Invalid;
++    }
++    if (file.ReadBytes(&local_friend_code_seed_b, sizeof(LocalFriendCodeSeedB))
++        != sizeof(LocalFriendCodeSeedB)) {
++        return SecureDataLoadStatus::IOError;
++    }
++    local_friend_code_seed_b_loaded = true;
++    return SecureDataLoadStatus::Loaded;
++}
++
++void Module::LoadMCUConfig()
++{
++    FileUtil::IOFile mcu_data_file(fmt::format("{}/mcu.dat",
++                                               FileUtil::GetUserPath(
++                                                   FileUtil::UserPath::SysDataDir)),
++                                   "rb");
+ 
+-    if (mcu_data_file.IsOpen() && mcu_data_file.GetSize() >= sizeof(MCUData) &&
+-        mcu_data_file.ReadBytes(&mcu_data, sizeof(MCUData)) == sizeof(MCUData)) {
++    if (mcu_data_file.IsOpen() && mcu_data_file.GetSize() >= sizeof(MCUData)
++        && mcu_data_file.ReadBytes(&mcu_data, sizeof(MCUData)) == sizeof(MCUData)) {
+         if (mcu_data.IsValid()) {
+             return;
+         }
+@@ -953,46 +1201,68 @@ void Module::LoadMCUConfig() {
+     SaveMCUConfig();
+ }
+ 
+-void Module::SaveMCUConfig() {
+-    FileUtil::IOFile mcu_data_file(
+-        fmt::format("{}/mcu.dat", FileUtil::GetUserPath(FileUtil::UserPath::SysDataDir)), "wb");
++void Module::SaveMCUConfig()
++{
++    FileUtil::IOFile mcu_data_file(fmt::format("{}/mcu.dat",
++                                               FileUtil::GetUserPath(
++                                                   FileUtil::UserPath::SysDataDir)),
++                                   "wb");
+ 
+     if (mcu_data_file.IsOpen()) {
+         mcu_data_file.WriteBytes(&mcu_data, sizeof(MCUData));
+     }
+ }
+ 
+-Module::Module(Core::System& system_) : system(system_) {
++Module::Module(Core::System& system_)
++    : system(system_)
++{
+     LoadConfigNANDSaveFile();
+     LoadMCUConfig();
+-    (void)GetMacAddress();
++    (void) GetMacAddress();
+     // Check the config savegame EULA Version and update it to 0x7F7F if necessary
+     // so users will never get a prompt to accept EULA
+     auto version = GetEULAVersion();
+     auto& default_version = GetDefaultEULAVersion();
+     if (version.major != default_version.major || version.minor != default_version.minor) {
+-        LOG_INFO(Service_CFG, "Updating accepted EULA version to {}.{}", default_version.major,
++        LOG_INFO(Service_CFG,
++                 "Updating accepted EULA version to {}.{}",
++                 default_version.major,
+                  default_version.minor);
+         SetEULAVersion(default_version);
+         UpdateConfigNANDSavegame();
+     }
++    LoadSecureInfoAFile();
++    LoadLocalFriendCodeSeedBFile();
+ }
+ 
+ Module::~Module() = default;
+ 
+ /// Checks if the language is available in the chosen region, and returns a proper one
+ static std::tuple<u32 /*region*/, SystemLanguage> AdjustLanguageInfoBlock(
+-    std::span<const u32> region_code, SystemLanguage language) {
++    std::span<const u32> region_code, SystemLanguage language)
++{
+     static const std::array<std::vector<SystemLanguage>, 7> region_languages{{
+         // JPN
+         {LANGUAGE_JP},
+         // USA
+         {LANGUAGE_EN, LANGUAGE_FR, LANGUAGE_ES, LANGUAGE_PT},
+         // EUR
+-        {LANGUAGE_EN, LANGUAGE_FR, LANGUAGE_DE, LANGUAGE_IT, LANGUAGE_ES, LANGUAGE_NL, LANGUAGE_PT,
++        {LANGUAGE_EN,
++         LANGUAGE_FR,
++         LANGUAGE_DE,
++         LANGUAGE_IT,
++         LANGUAGE_ES,
++         LANGUAGE_NL,
++         LANGUAGE_PT,
+          LANGUAGE_RU},
+         // AUS
+-        {LANGUAGE_EN, LANGUAGE_FR, LANGUAGE_DE, LANGUAGE_IT, LANGUAGE_ES, LANGUAGE_NL, LANGUAGE_PT,
++        {LANGUAGE_EN,
++         LANGUAGE_FR,
++         LANGUAGE_DE,
++         LANGUAGE_IT,
++         LANGUAGE_ES,
++         LANGUAGE_NL,
++         LANGUAGE_PT,
+          LANGUAGE_RU},
+         // CHN
+         {LANGUAGE_ZH},
+@@ -1015,13 +1285,16 @@ static std::tuple<u32 /*region*/, SystemLanguage> AdjustLanguageInfoBlock(
+     return {default_region, region_languages[default_region][0]};
+ }
+ 
+-std::string& Module::GetMacAddress() {
++std::string& Module::GetMacAddress()
++{
+     if (!mac_address.empty()) {
+         return mac_address;
+     }
+ 
+-    FileUtil::IOFile mac_address_file(
+-        fmt::format("{}/mac.txt", FileUtil::GetUserPath(FileUtil::UserPath::SysDataDir)), "rb");
++    FileUtil::IOFile mac_address_file(fmt::format("{}/mac.txt",
++                                                  FileUtil::GetUserPath(
++                                                      FileUtil::UserPath::SysDataDir)),
++                                      "rb");
+     if (!mac_address_file.IsOpen() || mac_address_file.GetSize() > 100) {
+         LOG_INFO(Service_CFG, "Cannot open mac address file for read, generating a new one");
+         mac_address = GenerateRandomMAC();
+@@ -1042,9 +1315,12 @@ std::string& Module::GetMacAddress() {
+     return mac_address;
+ }
+ 
+-void Module::SaveMacAddress() {
+-    FileUtil::IOFile mac_address_file(
+-        fmt::format("{}/mac.txt", FileUtil::GetUserPath(FileUtil::UserPath::SysDataDir)), "wb");
++void Module::SaveMacAddress()
++{
++    FileUtil::IOFile mac_address_file(fmt::format("{}/mac.txt",
++                                                  FileUtil::GetUserPath(
++                                                      FileUtil::UserPath::SysDataDir)),
++                                      "wb");
+ 
+     if (!mac_address_file.IsOpen()) {
+         LOG_ERROR(Service_CFG, "Cannot open mac address file for write");
+@@ -1054,7 +1330,8 @@ void Module::SaveMacAddress() {
+     mac_address_file.WriteBytes(mac_address.data(), mac_address.size());
+ }
+ 
+-void Module::UpdatePreferredRegionCode() {
++void Module::UpdatePreferredRegionCode()
++{
+     if (preferred_region_chosen || !system.IsPoweredOn()) {
+         return;
+     }
+@@ -1066,27 +1343,31 @@ void Module::UpdatePreferredRegionCode() {
+     }
+ 
+     const auto current_language = GetRawSystemLanguage();
+-    const auto [region, adjusted_language] =
+-        AdjustLanguageInfoBlock(preferred_regions, current_language);
++    const auto [region, adjusted_language] = AdjustLanguageInfoBlock(preferred_regions,
++                                                                     current_language);
+ 
+     preferred_region_code = region;
+     LOG_INFO(Service_CFG, "Preferred region code set to {}", preferred_region_code);
+ 
+     if (current_language != adjusted_language) {
+-        LOG_WARNING(Service_CFG, "System language {} does not fit the region. Adjusted to {}",
+-                    current_language, adjusted_language);
++        LOG_WARNING(Service_CFG,
++                    "System language {} does not fit the region. Adjusted to {}",
++                    current_language,
++                    adjusted_language);
+         SetSystemLanguage(adjusted_language);
+     }
+ }
+ 
+-void Module::SetUsername(const std::u16string& name) {
++void Module::SetUsername(const std::u16string& name)
++{
+     ASSERT(name.size() <= 10);
+     UsernameBlock block{};
+     name.copy(block.username.data(), name.size());
+     SetConfigBlock(UsernameBlockID, sizeof(block), AccessFlag::SystemWrite, &block);
+ }
+ 
+-std::u16string Module::GetUsername() {
++std::u16string Module::GetUsername()
++{
+     UsernameBlock block;
+     GetConfigBlock(UsernameBlockID, sizeof(block), AccessFlag::SystemRead, &block);
+ 
+@@ -1099,69 +1380,81 @@ std::u16string Module::GetUsername() {
+     return username;
+ }
+ 
+-void Module::SetBirthday(u8 month, u8 day) {
++void Module::SetBirthday(u8 month, u8 day)
++{
+     BirthdayBlock block = {month, day};
+     SetConfigBlock(BirthdayBlockID, sizeof(block), AccessFlag::SystemWrite, &block);
+ }
+ 
+-std::tuple<u8, u8> Module::GetBirthday() {
++std::tuple<u8, u8> Module::GetBirthday()
++{
+     BirthdayBlock block;
+     GetConfigBlock(BirthdayBlockID, sizeof(block), AccessFlag::SystemRead, &block);
+     return std::make_tuple(block.month, block.day);
+ }
+ 
+-void Module::SetSystemLanguage(SystemLanguage language) {
++void Module::SetSystemLanguage(SystemLanguage language)
++{
+     u8 block = language;
+     SetConfigBlock(LanguageBlockID, sizeof(block), AccessFlag::SystemWrite, &block);
+ }
+ 
+-SystemLanguage Module::GetSystemLanguage() {
++SystemLanguage Module::GetSystemLanguage()
++{
+     if (Settings::values.region_value.GetValue() == Settings::REGION_VALUE_AUTO_SELECT) {
+         UpdatePreferredRegionCode();
+     }
+     return GetRawSystemLanguage();
+ }
+ 
+-SystemLanguage Module::GetRawSystemLanguage() {
++SystemLanguage Module::GetRawSystemLanguage()
++{
+     u8 block{};
+     GetConfigBlock(LanguageBlockID, sizeof(block), AccessFlag::SystemRead, &block);
+     return static_cast<SystemLanguage>(block);
+ }
+ 
+-void Module::SetSoundOutputMode(SoundOutputMode mode) {
++void Module::SetSoundOutputMode(SoundOutputMode mode)
++{
+     u8 block = mode;
+     SetConfigBlock(SoundOutputModeBlockID, sizeof(block), AccessFlag::SystemWrite, &block);
+ }
+ 
+-SoundOutputMode Module::GetSoundOutputMode() {
++SoundOutputMode Module::GetSoundOutputMode()
++{
+     u8 block{};
+     GetConfigBlock(SoundOutputModeBlockID, sizeof(block), AccessFlag::SystemRead, &block);
+     return static_cast<SoundOutputMode>(block);
+ }
+ 
+-void Module::SetCountryCode(u8 country_code) {
++void Module::SetCountryCode(u8 country_code)
++{
+     ConsoleCountryInfo block = {{0, 0}, default_subregion[country_code], country_code};
+     SetConfigBlock(CountryInfoBlockID, sizeof(block), AccessFlag::SystemWrite, &block);
+ }
+ 
+-u8 Module::GetCountryCode() {
++u8 Module::GetCountryCode()
++{
+     ConsoleCountryInfo block{};
+     GetConfigBlock(CountryInfoBlockID, sizeof(block), AccessFlag::SystemRead, &block);
+     return block.country_code;
+ }
+ 
+-void Module::SetCountryInfo(u8 country_code, u8 state_code) {
++void Module::SetCountryInfo(u8 country_code, u8 state_code)
++{
+     ConsoleCountryInfo block = {{0, 0}, state_code, country_code};
+     SetConfigBlock(CountryInfoBlockID, sizeof(block), AccessFlag::SystemWrite, &block);
+ }
+ 
+-u8 Module::GetStateCode() {
++u8 Module::GetStateCode()
++{
+     ConsoleCountryInfo block{};
+     GetConfigBlock(CountryInfoBlockID, sizeof(block), AccessFlag::SystemRead, &block);
+     return block.state_code;
+ }
+ 
+-std::pair<u32, u64> Module::GenerateConsoleUniqueId() const {
++std::pair<u32, u64> Module::GenerateConsoleUniqueId() const
++{
+     CryptoPP::AutoSeededRandomPool rng;
+     const u32 random_number = rng.GenerateWord32(0, 0xFFFF);
+ 
+@@ -1174,26 +1467,33 @@ std::pair<u32, u64> Module::GenerateConsoleUniqueId() const {
+                           sizeof(local_friend_code_seed));
+     }
+ 
+-    const u64 console_id =
+-        (local_friend_code_seed & 0x3FFFFFFFF) | (static_cast<u64>(random_number) << 48);
++    const u64 console_id = (local_friend_code_seed & 0x3FFFFFFFF)
++                           | (static_cast<u64>(random_number) << 48);
+ 
+     return std::make_pair(random_number, console_id);
+ }
+ 
+-Result Module::SetConsoleUniqueId(u32 random_number, u64 console_id) {
++Result Module::SetConsoleUniqueId(u32 random_number, u64 console_id)
++{
+     u64_le console_id_le = console_id;
+-    Result res = SetConfigBlock(ConsoleUniqueID1BlockID, sizeof(console_id_le), AccessFlag::Global,
++    Result res = SetConfigBlock(ConsoleUniqueID1BlockID,
++                                sizeof(console_id_le),
++                                AccessFlag::Global,
+                                 &console_id_le);
+     if (!res.IsSuccess())
+         return res;
+ 
+-    res = SetConfigBlock(ConsoleUniqueID2BlockID, sizeof(console_id_le), AccessFlag::Global,
++    res = SetConfigBlock(ConsoleUniqueID2BlockID,
++                         sizeof(console_id_le),
++                         AccessFlag::Global,
+                          &console_id_le);
+     if (!res.IsSuccess())
+         return res;
+ 
+     u32_le random_number_le = random_number;
+-    res = SetConfigBlock(ConsoleUniqueID3BlockID, sizeof(random_number_le), AccessFlag::Global,
++    res = SetConfigBlock(ConsoleUniqueID3BlockID,
++                         sizeof(random_number_le),
++                         AccessFlag::Global,
+                          &random_number_le);
+     if (!res.IsSuccess())
+         return res;
+@@ -1201,14 +1501,18 @@ Result Module::SetConsoleUniqueId(u32 random_number, u64 console_id) {
+     return ResultSuccess;
+ }
+ 
+-u64 Module::GetConsoleUniqueId() {
++u64 Module::GetConsoleUniqueId()
++{
+     u64_le console_id_le{};
+-    GetConfigBlock(ConsoleUniqueID2BlockID, sizeof(console_id_le), AccessFlag::Global,
++    GetConfigBlock(ConsoleUniqueID2BlockID,
++                   sizeof(console_id_le),
++                   AccessFlag::Global,
+                    &console_id_le);
+     return console_id_le;
+ }
+ 
+-EULAVersion Module::GetEULAVersion() {
++EULAVersion Module::GetEULAVersion()
++{
+     u32_le data{};
+     GetConfigBlock(EULAVersionBlockID, sizeof(data), AccessFlag::Global, &data);
+     EULAVersion version;
+@@ -1217,22 +1521,26 @@ EULAVersion Module::GetEULAVersion() {
+     return version;
+ }
+ 
+-void Module::SetEULAVersion(const EULAVersion& version) {
++void Module::SetEULAVersion(const EULAVersion& version)
++{
+     SetConfigBlock(EULAVersionBlockID, sizeof(version), AccessFlag::Global, &version);
+ }
+ 
+-void Module::SetSystemSetupNeeded(bool setup_needed) {
++void Module::SetSystemSetupNeeded(bool setup_needed)
++{
+     u32 block = setup_needed ? 0 : 1;
+     SetConfigBlock(SystemSetupRequiredBlockID, sizeof(block), AccessFlag::System, &block);
+ }
+ 
+-bool Module::IsSystemSetupNeeded() {
++bool Module::IsSystemSetupNeeded()
++{
+     u32 block{};
+     GetConfigBlock(SystemSetupRequiredBlockID, sizeof(block), AccessFlag::System, &block);
+     return (block & 0xFFFF) == 0;
+ }
+ 
+-std::shared_ptr<Module> GetModule(Core::System& system) {
++std::shared_ptr<Module> GetModule(Core::System& system)
++{
+     if (system.IsPoweredOn()) {
+         auto cfg = system.ServiceManager().GetService<Module::Interface>("cfg:u");
+         if (cfg) {
+@@ -1245,7 +1553,8 @@ std::shared_ptr<Module> GetModule(Core::System& system) {
+     return std::make_shared<Module>(system);
+ }
+ 
+-void InstallInterfaces(Core::System& system) {
++void InstallInterfaces(Core::System& system)
++{
+     auto& service_manager = system.ServiceManager();
+     auto cfg = std::make_shared<Module>(system);
+     std::make_shared<CFG_I>(cfg)->InstallAsService(service_manager);
+@@ -1254,7 +1563,8 @@ void InstallInterfaces(Core::System& system) {
+     std::make_shared<CFG_NOR>()->InstallAsService(service_manager);
+ }
+ 
+-std::string GetConsoleIdHash(Core::System& system) {
++std::string GetConsoleIdHash(Core::System& system)
++{
+     u64_le console_id = GetModule(system)->GetConsoleUniqueId();
+     std::array<u8, sizeof(console_id)> buffer;
+     std::memcpy(buffer.data(), &console_id, sizeof(console_id));
+@@ -1264,36 +1574,52 @@ std::string GetConsoleIdHash(Core::System& system) {
+     return fmt::format("{:02x}", fmt::join(hash.begin(), hash.end(), ""));
+ }
+ 
+-std::array<u8, 6> MacToArray(const std::string& mac) {
++std::array<u8, 6> MacToArray(const std::string& mac)
++{
+     std::array<u8, 6> ret;
+     int last = -1;
+-    int rc = sscanf(mac.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx%n", ret.data() + 0, ret.data() + 1,
+-                    ret.data() + 2, ret.data() + 3, ret.data() + 4, ret.data() + 5, &last);
++    int rc = sscanf(mac.c_str(),
++                    "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx%n",
++                    ret.data() + 0,
++                    ret.data() + 1,
++                    ret.data() + 2,
++                    ret.data() + 3,
++                    ret.data() + 4,
++                    ret.data() + 5,
++                    &last);
+     if (rc != 6 || static_cast<int>(mac.size()) != last) {
+         return MacToArray(GenerateRandomMAC());
+     }
+     return ret;
+ }
+ 
+-std::string MacToString(u64 mac) {
+-    return fmt::format("{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}", (mac >> (5 * 8)) & 0xFF,
+-                       (mac >> (4 * 8)) & 0xFF, (mac >> (3 * 8)) & 0xFF, (mac >> (2 * 8)) & 0xFF,
+-                       (mac >> (1 * 8)) & 0xFF, (mac >> (0 * 8)) & 0xFF);
++std::string MacToString(u64 mac)
++{
++    return fmt::format("{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
++                       (mac >> (5 * 8)) & 0xFF,
++                       (mac >> (4 * 8)) & 0xFF,
++                       (mac >> (3 * 8)) & 0xFF,
++                       (mac >> (2 * 8)) & 0xFF,
++                       (mac >> (1 * 8)) & 0xFF,
++                       (mac >> (0 * 8)) & 0xFF);
+ }
+ 
+-std::string MacToString(const std::array<u8, 6>& mac) {
+-    u64 mac_u64 = u64(mac[0]) << 40 | u64(mac[1]) << 32 | u64(mac[2]) << 24 | u64(mac[3]) << 16 |
+-                  u64(mac[4]) << 8 | u64(mac[5]);
++std::string MacToString(const std::array<u8, 6>& mac)
++{
++    u64 mac_u64 = u64(mac[0]) << 40 | u64(mac[1]) << 32 | u64(mac[2]) << 24 | u64(mac[3]) << 16
++                  | u64(mac[4]) << 8 | u64(mac[5]);
+     return MacToString(mac_u64);
+ }
+ 
+-u64 MacToU64(const std::string& mac) {
++u64 MacToU64(const std::string& mac)
++{
+     auto ret = MacToArray(mac);
+-    return u64(ret[0]) << 40 | u64(ret[1]) << 32 | u64(ret[2]) << 24 | u64(ret[3]) << 16 |
+-           u64(ret[4]) << 8 | u64(ret[5]);
++    return u64(ret[0]) << 40 | u64(ret[1]) << 32 | u64(ret[2]) << 24 | u64(ret[3]) << 16
++           | u64(ret[4]) << 8 | u64(ret[5]);
+ }
+ 
+-std::string GenerateRandomMAC() {
++std::string GenerateRandomMAC()
++{
+     static const std::array<std::pair<u64, u64>, 16> ranges = {{
+         {0x182A7B000000ULL, 0x182A7BFFFFFFULL},
+         {0x2C10C1000000ULL, 0x2C10C1FFFFFFULL},
+@@ -1314,8 +1640,8 @@ std::string GenerateRandomMAC() {
+     }};
+     CryptoPP::AutoSeededRandomPool rng;
+     auto& range = ranges[rng.GenerateWord32(0, static_cast<CryptoPP::word32>(ranges.size() - 1))];
+-    u64 mac = range.first +
+-              rng.GenerateWord32(0, static_cast<CryptoPP::word32>(range.second - range.first));
++    u64 mac = range.first
++              + rng.GenerateWord32(0, static_cast<CryptoPP::word32>(range.second - range.first));
+     return MacToString(mac);
+ }
+ 
+diff --git a/src/core/hle/service/cfg/cfg.h b/src/core/hle/service/cfg/cfg.h
+index 7536680c0..248f4f12a 100644
+--- a/src/core/hle/service/cfg/cfg.h
++++ b/src/core/hle/service/cfg/cfg.h
+@@ -4,14 +4,14 @@
+ 
+ #pragma once
+ 
++#include "common/common_types.h"
++#include "core/hle/service/service.h"
++#include "network/artic_base/artic_base_client.h"
+ #include <array>
+ #include <memory>
+ #include <span>
+ #include <string>
+ #include <utility>
+-#include "common/common_types.h"
+-#include "core/hle/service/service.h"
+-#include "network/artic_base/artic_base_client.h"
+ 
+ namespace FileSys {
+ class ArchiveBackend;
+@@ -121,14 +121,16 @@ enum SystemLanguage {
+ 
+ enum SoundOutputMode { SOUND_MONO = 0, SOUND_STEREO = 1, SOUND_SURROUND = 2 };
+ 
+-struct EULAVersion {
++struct EULAVersion
++{
+     u8 minor;
+     u8 major;
+     INSERT_PADDING_BYTES(2);
+ };
+ static_assert(sizeof(EULAVersion) == 4, "EULAVersion must be exactly 0x4 bytes");
+ 
+-struct UsernameBlock {
++struct UsernameBlock
++{
+     /// Exactly 20 bytes long, padded with zeros at the end if necessary
+     std::array<char16_t, 10> username;
+     u32 zero;
+@@ -136,32 +138,37 @@ struct UsernameBlock {
+ };
+ static_assert(sizeof(UsernameBlock) == 0x1C, "UsernameBlock must be exactly 0x1C bytes");
+ 
+-struct BirthdayBlock {
++struct BirthdayBlock
++{
+     u8 month; ///< The month of the birthday
+     u8 day;   ///< The day of the birthday
+ };
+ static_assert(sizeof(BirthdayBlock) == 2, "BirthdayBlock must be exactly 2 bytes");
+ 
+-struct ConsoleModelInfo {
++struct ConsoleModelInfo
++{
+     u8 model;                  ///< The console model (3DS, 2DS, etc)
+     std::array<u8, 3> unknown; ///< Unknown data
+ };
+ static_assert(sizeof(ConsoleModelInfo) == 4, "ConsoleModelInfo must be exactly 4 bytes");
+ 
+-struct ConsoleCountryInfo {
++struct ConsoleCountryInfo
++{
+     std::array<u8, 2> unknown; ///< Unknown data
+     u8 state_code;             ///< The state or province code.
+     u8 country_code;           ///< The country code of the console
+ };
+ static_assert(sizeof(ConsoleCountryInfo) == 4, "ConsoleCountryInfo must be exactly 4 bytes");
+ 
+-struct BacklightControls {
++struct BacklightControls
++{
+     u8 power_saving_enabled; ///< Whether power saving mode is enabled.
+     u8 brightness_level;     ///< The configured brightness level.
+ };
+ static_assert(sizeof(BacklightControls) == 2, "BacklightControls must be exactly 2 bytes");
+ 
+-struct New3dsBacklightControls {
++struct New3dsBacklightControls
++{
+     std::array<u8, 4> unknown_1; ///< Unknown data
+     u8 auto_brightness_enabled;  ///< Whether auto brightness is enabled.
+     std::array<u8, 3> unknown_2; ///< Unknown data
+@@ -181,19 +188,46 @@ enum class AccessFlag : u16 {
+ };
+ DECLARE_ENUM_FLAG_OPERATORS(AccessFlag);
+ 
+-class Module final {
++struct SecureInfoA
++{
++    std::array<u8, 0x100> signature;
++    u8 region;
++    u8 unknown;
++    std::array<u8, 0xF> serial_number;
++};
++static_assert(sizeof(SecureInfoA) == 0x111);
++
++struct LocalFriendCodeSeedB
++{
++    std::array<u8, 0x100> signature;
++    u64 unknown;
++    u64 friend_code_seed;
++};
++static_assert(sizeof(LocalFriendCodeSeedB) == 0x110);
++
++enum class SecureDataLoadStatus {
++    Loaded,
++    NotFound,
++    Invalid,
++    IOError,
++};
++
++class Module final
++{
+ public:
+     Module(Core::System& system_);
+     ~Module();
+ 
+-    class Interface : public ServiceFramework<Interface> {
++    class Interface : public ServiceFramework<Interface>
++    {
+     public:
+         Interface(std::shared_ptr<Module> cfg, const char* name, u32 max_session);
+         ~Interface();
+ 
+         std::shared_ptr<Module> GetModule() const;
+ 
+-        void UseArticClient(std::shared_ptr<Network::ArticBase::Client>& client) {
++        void UseArticClient(std::shared_ptr<Network::ArticBase::Client>& client)
++        {
+             GetModule()->artic_client = client;
+         }
+ 
+@@ -404,8 +438,10 @@ private:
+     // Represents save data that would normally be stored in the MCU
+     // on real hardware. Try to keep this struct backwards compatible
+     // if a new version is needed to prevent data loss.
+-    struct MCUData {
+-        struct Header {
++    struct MCUData
++    {
++        struct Header
++        {
+             static constexpr u32 MAGIC_VALUE = 0x4455434D;
+             static constexpr u32 VERSION_VALUE = 1;
+             u32 magic = MAGIC_VALUE;
+@@ -415,7 +451,8 @@ private:
+         Header header;
+         u32 clock_sequence = 0;
+ 
+-        [[nodiscard]] bool IsValid() const {
++        [[nodiscard]] bool IsValid() const
++        {
+             return header.magic == Header::MAGIC_VALUE && header.version == Header::VERSION_VALUE;
+         }
+     };
+@@ -634,6 +671,34 @@ public:
+      */
+     void SaveMacAddress();
+ 
++    /**
++     * Invalidates the loaded secure data so that it is loaded again.
++     */
++    void InvalidateSecureData();
++    /**
++     * Loads the LocalFriendCodeSeed_B file from NAND.
++     * @returns LocalFriendCodeSeedBLoadStatus indicating the file load status.
++     */
++    SecureDataLoadStatus LoadSecureInfoAFile();
++
++    /**
++     * Loads the LocalFriendCodeSeed_B file from NAND.
++     * @returns LocalFriendCodeSeedBLoadStatus indicating the file load status.
++     */
++    SecureDataLoadStatus LoadLocalFriendCodeSeedBFile();
++
++    /**
++     * Gets the SecureInfo_A path in the host filesystem
++     * @returns std::string SecureInfo_A path in the host filesystem
++     */
++    std::string GetSecureInfoAPath();
++
++    /**
++     * Gets the LocalFriendCodeSeed_B path in the host filesystem
++     * @returns std::string LocalFriendCodeSeed_B path in the host filesystem
++     */
++    std::string GetLocalFriendCodeSeedBPath();
++
+ private:
+     void UpdatePreferredRegionCode();
+     SystemLanguage GetRawSystemLanguage();
+@@ -644,13 +709,17 @@ private:
+     std::array<u8, CONFIG_SAVEFILE_SIZE> cfg_config_file_buffer;
+     std::unique_ptr<FileSys::ArchiveBackend> cfg_system_save_data_archive;
+     u32 preferred_region_code = 0;
++    bool secure_info_a_loaded = false;
++    SecureInfoA secure_info_a;
++    bool local_friend_code_seed_b_loaded = false;
++    LocalFriendCodeSeedB local_friend_code_seed_b;
+     bool preferred_region_chosen = false;
+     MCUData mcu_data{};
+     std::string mac_address{};
+ 
+     std::shared_ptr<Network::ArticBase::Client> artic_client = nullptr;
+ 
+-    template <class Archive>
++    template<class Archive>
+     void serialize(Archive& ar, const unsigned int);
+     friend class boost::serialization::access;
+ };

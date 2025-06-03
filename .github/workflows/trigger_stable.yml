@@ -1,0 +1,87 @@
+name: Azahar Stable
+concurrency:
+  group: stable-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  schedule:
+    - cron: "0 7 1/3 * *"
+  push:
+    branches:
+      - '*'
+  workflow_dispatch: {}
+
+
+jobs:
+  build:
+    name: Build Stable
+    uses: ./.github/workflows/build.yml
+    with:
+      nightly: false
+
+  release:
+    name: "release"
+    needs: [build]
+    permissions:
+      actions: read
+      security-events: write
+      contents: write
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Read version
+        run: |
+          export VERSION="$(cat version/*)"
+          export SNAPSHOT_TAG="$(date --utc +'%Y%m%d-%H%M%S')"
+          echo "APP_VERSION=${VERSION}" >> "${GITHUB_ENV}"
+          echo SNAPSHOT_TAG="${SNAPSHOT_TAG}" >> "${GITHUB_ENV}"
+
+      - name: Package Artifacts Nicely
+        run: |
+          mkdir -p artifacts
+          cp linux-*/*AppImage* artifacts
+          cp android*/app-release.apk artifacts/azahar-${{ env.APP_VERSION }}-universal.apk
+
+          for target in msys2 msvc
+          do
+            zip -r artifacts/azahar-windows-$target-${{ env.APP_VERSION }}-portable.zip windows-$target-portable/*
+            if [ -d "windows-$target-installer" ]
+            then
+              mv windows-$target-installer/*.exe artifacts/azahar-windows-$target-${{ env.VERSION }}-installer.exe
+            fi
+          done
+
+      - name: Del Previous Release
+        run: |
+          gh release delete "${APP_VERSION}" --repo "${GITHUB_REPOSITORY}" --cleanup-tag  -y
+          sleep 5
+        env:
+          GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+        continue-on-error: true
+
+      - name: Continuous Releaser
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Azahar ${{ env.APP_VERSION }}"
+          tag_name: "${{ env.APP_VERSION }}"
+          prerelease: false
+          draft: false
+          generate_release_notes: false
+          make_latest: true
+          files: |
+            artifacts/*
+
+      - name: Snapshot Releaser
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Snapshot ${{ env.APP_VERSION }}"
+          tag_name: "${{ env.SNAPSHOT_TAG }}"
+          prerelease: false
+          draft: false
+          generate_release_notes: false
+          make_latest: false
+          files: |
+            artifacts/*

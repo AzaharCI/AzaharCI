@@ -1,0 +1,58 @@
+diff --git a/.ci/linux.sh b/.ci/linux.sh
+index 5b3521681..6cf7e03bc 100755
+--- a/.ci/linux.sh
++++ b/.ci/linux.sh
+@@ -2,9 +2,7 @@
+ 
+ if [ "$TARGET" = "appimage" ]; then
+     # Compile the AppImage we distribute with Clang.
+-    export EXTRA_CMAKE_FLAGS=(-DCMAKE_CXX_COMPILER=clang++
+-                              -DCMAKE_C_COMPILER=clang
+-                              -DCMAKE_LINKER=/etc/bin/ld.lld
++    export EXTRA_CMAKE_FLAGS=(-DCMAKE_LINKER=/etc/bin/ld.lld
+                               -DENABLE_ROOM_STANDALONE=OFF)
+     # Bundle required QT wayland libraries
+     export EXTRA_QT_PLUGINS="waylandcompositor"
+@@ -18,7 +16,9 @@ if [ "$GITHUB_REF_TYPE" == "tag" ]; then
+     export EXTRA_CMAKE_FLAGS=("${EXTRA_CMAKE_FLAGS[@]}" -DENABLE_QT_UPDATE_CHECKER=ON)
+ fi
+ 
+-mkdir build && cd build
++mkdir -p build
++cd build
++
+ cmake .. -G Ninja \
+     -DCMAKE_BUILD_TYPE=Release \
+     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+@@ -32,10 +32,4 @@ strip -s bin/Release/*
+ 
+ if [ "$TARGET" = "appimage" ]; then
+     ninja bundle
+-    # TODO: Our AppImage environment currently uses an older ccache version without the verbose flag.
+-    ccache -s
+-else
+-    ccache -s -v
+ fi
+-
+-ctest -VV -C Release
+diff --git a/CMakeModules/BundleTarget.cmake b/CMakeModules/BundleTarget.cmake
+index bd30faf91..6d00a0e42 100644
+--- a/CMakeModules/BundleTarget.cmake
++++ b/CMakeModules/BundleTarget.cmake
+@@ -119,6 +119,7 @@ if (BUNDLE_TARGET_EXECUTE)
+ 
+         # Set up app icon
+         file(COPY_FILE "${source_path}/dist/azahar.svg" "${CMAKE_BINARY_DIR}/dist/org.azahar_emu.Azahar.svg")
++        file(COPY_FILE "${source_path}/dist/azahar.desktop" "${CMAKE_BINARY_DIR}/dist/org.azahar_emu.Azahar.desktop")
+ 
+         message(STATUS "Creating AppDir for executable ${executable_path}")
+         execute_process(COMMAND ${CMAKE_COMMAND} -E env
+@@ -128,7 +129,7 @@ if (BUNDLE_TARGET_EXECUTE)
+             --plugin checkrt
+             --executable "${executable_path}"
+             --icon-file "${CMAKE_BINARY_DIR}/dist/org.azahar_emu.Azahar.svg"
+-            --desktop-file "${source_path}/dist/${executable_name}.desktop"
++            --desktop-file "${CMAKE_BINARY_DIR}/dist/org.azahar_emu.Azahar.desktop"
+             --appdir "${appdir_path}"
+             RESULT_VARIABLE linuxdeploy_appdir_result)
+         if (NOT linuxdeploy_appdir_result EQUAL "0")

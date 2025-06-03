@@ -1,0 +1,48 @@
+diff --git a/src/citra_qt/citra_qt.cpp b/src/citra_qt/citra_qt.cpp
+index 5cb575b9e..7e4aec536 100644
+--- a/src/citra_qt/citra_qt.cpp
++++ b/src/citra_qt/citra_qt.cpp
+@@ -793,6 +793,10 @@ void GMainWindow::InitializeHotkeys() {
+     link_action_shortcut(ui->action_Show_Room, QStringLiteral("Multiplayer Show Current Room"));
+     link_action_shortcut(ui->action_Leave_Room, QStringLiteral("Multiplayer Leave Room"));
+
++    link_action_shortcut(ui->action_Configure, QStringLiteral("Configure"));
++    link_action_shortcut(ui->action_Configure_Current_Game,
++                         QStringLiteral("Configure Current Application"));
++
+     // QShortcut Hotkeys
+     const auto connect_shortcut = [&](const QString& action_name, const auto& function) {
+         const auto* hotkey = hotkey_registry.GetHotkey(main_window, action_name, this);
+diff --git a/src/citra_qt/configuration/config.cpp b/src/citra_qt/configuration/config.cpp
+index 426600bdc..7a23f18b1 100644
+--- a/src/citra_qt/configuration/config.cpp
++++ b/src/citra_qt/configuration/config.cpp
+@@ -54,12 +54,14 @@ const std::array<std::array<int, 5>, Settings::NativeAnalog::NumAnalogs> QtConfi
+ // This must be in alphabetical order according to action name as it must have the same order as
+ // UISetting::values.shortcuts, which is alphabetically ordered.
+ // clang-format off
+-const std::array<UISettings::Shortcut, 38> QtConfig::default_hotkeys {{
++const std::array<UISettings::Shortcut, 40> QtConfig::default_hotkeys {{
+      {QStringLiteral("Advance Frame"),            QStringLiteral("Main Window"), {QStringLiteral(""),       Qt::ApplicationShortcut}},
+      {QStringLiteral("Audio Mute/Unmute"),        QStringLiteral("Main Window"), {QStringLiteral("Ctrl+M"), Qt::WindowShortcut}},
+      {QStringLiteral("Audio Volume Down"),        QStringLiteral("Main Window"), {QStringLiteral(""),       Qt::WindowShortcut}},
+      {QStringLiteral("Audio Volume Up"),          QStringLiteral("Main Window"), {QStringLiteral(""),       Qt::WindowShortcut}},
+      {QStringLiteral("Capture Screenshot"),       QStringLiteral("Main Window"), {QStringLiteral("Ctrl+P"), Qt::WidgetWithChildrenShortcut}},
++     {QStringLiteral("Configure"),                QStringLiteral("Main Window"), {QStringLiteral("Ctrl+,"), Qt::WindowShortcut}},
++     {QStringLiteral("Configure Current Game"),   QStringLiteral("Main Window"), {QStringLiteral("Ctrl+."), Qt::WindowShortcut}},
+      {QStringLiteral("Continue/Pause Emulation"), QStringLiteral("Main Window"), {QStringLiteral("F4"),     Qt::WindowShortcut}},
+      {QStringLiteral("Decrease 3D Factor"),       QStringLiteral("Main Window"), {QStringLiteral("Ctrl+-"), Qt::ApplicationShortcut}},
+      {QStringLiteral("Decrease Speed Limit"),     QStringLiteral("Main Window"), {QStringLiteral("-"),      Qt::ApplicationShortcut}},
+diff --git a/src/citra_qt/configuration/config.h b/src/citra_qt/configuration/config.h
+index 2c9039dde..7b6ca1b4c 100644
+--- a/src/citra_qt/configuration/config.h
++++ b/src/citra_qt/configuration/config.h
+@@ -26,7 +26,7 @@ class QtConfig {
+
+     static const std::array<int, Settings::NativeButton::NumButtons> default_buttons;
+     static const std::array<std::array<int, 5>, Settings::NativeAnalog::NumAnalogs> default_analogs;
+-    static const std::array<UISettings::Shortcut, 38> default_hotkeys;
++    static const std::array<UISettings::Shortcut, 40> default_hotkeys;
+
+ private:
+     void Initialize(const std::string& config_name);
