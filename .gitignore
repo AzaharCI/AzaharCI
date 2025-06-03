@@ -1,3 +1,4 @@
 azahar
 artifacts
 *.apk
+.vscode

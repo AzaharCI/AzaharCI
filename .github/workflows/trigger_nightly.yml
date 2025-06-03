@@ -39,21 +39,8 @@ jobs:
           echo "APP_VERSION=${VERSION}" >> "${GITHUB_ENV}"
           echo SNAPSHOT_TAG="${SNAPSHOT_TAG}" >> "${GITHUB_ENV}"
 
-      # TODO(cortex): Move this to a convenience script
       - name: Package Artifacts Nicely
-        run: |
-          mkdir -p artifacts
-          cp linux-*/*AppImage* artifacts
-          cp android*/app-release.apk artifacts/azahar-${{ env.APP_VERSION }}-universal.apk
-
-          for target in msys2 msvc
-          do
-            zip -r artifacts/azahar-windows-$target-${{ env.APP_VERSION }}-portable.zip windows-$target-portable/*
-            if [ -d "windows-$target-installer" ]
-            then
-              mv windows-$target-installer/*.exe artifacts/azahar-windows-$target-${{ env.VERSION }}-installer.exe
-            fi
-          done
+        run: VERSION=${{ env.APP_VERSION }} .ci/pack.sh
 
       - name: Del Previous Release
         run: |

@@ -15,7 +15,8 @@ else
 fi
 
 # Main patches
-git apply $ROOT/core/patch/meta.patch
+# TODO: meta.patch is broken on windows
+# git apply $ROOT/core/patch/meta.patch 
 git apply $ROOT/core/patch/homeSettings.patch
 git apply $ROOT/core/patch/oldFiles.patch
 git apply $ROOT/core/patch/configSystem.patch
@@ -70,7 +71,7 @@ $ROOT/ext/script/game-qt.sh
 $ROOT/ext/script/appimage-shortcut.sh
 
 ## Update checker -- run this no matter what
-sed -i 's|azahar-emu/azahar|Corte-Z/AzaharCI|g' citra_qt/update_checker.cpp
+sed -i 's|azahar-emu/azahar|AzaharCI/AzaharCI|g' citra_qt/update_checker.cpp
 cd ..
 
 # Make future patches easier to make

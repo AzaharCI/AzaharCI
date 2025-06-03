@@ -2,7 +2,7 @@
 A CI for Azahar that adds back removed features, with additional patches from Corte-Z and others.
 
 ## Core Patches
-All patches in the `core` directory are the core patches enabling removed features, including encryption, NUS system file downloads, and more. It's strongly recommended to use these no matter what, as all extension patches require these to be applied first.
+All patches in the `core` directory are the core patches enabling removed features, including decryption, NUS system file downloads, and more. It's strongly recommended to use these no matter what, as all extension patches require these to be applied first.
 
 ### Concat Files
 `.cat` files contain additional version-agnostic file fragments, intended to be safely concatenated into existing files within the Azahar codebase.
