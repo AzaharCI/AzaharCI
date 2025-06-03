@@ -1,0 +1,14 @@
+diff --git a/src/citra_qt/update_checker.cpp b/src/citra_qt/update_checker.cpp
+index c67a90bdf..ea67f27ca 100644
+--- a/src/citra_qt/update_checker.cpp
++++ b/src/citra_qt/update_checker.cpp
+@@ -73,7 +73,8 @@ std::optional<std::string> UpdateChecker::GetLatestRelease(bool include_prerelea
+ 
+             // If there is a newer tag, but that tag has no associated release, don't prompt the
+             // user to update.
+-            if (!latest_tag_has_release)
++            // TODO(cortex): Figure out a better solution here
++            if (!latest_tag_has_release || latest_tag == "nightly")
+                 return {};
+ 
+             return latest_tag;

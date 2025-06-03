@@ -26,6 +26,7 @@ git apply $ROOT/core/patch/ci.patch
 git apply $ROOT/core/patch/misc.patch
 git apply $ROOT/core/patch/encryption.patch
 git apply $ROOT/core/patch/ticketFix.patch
+git apply $ROOT/core/patch/updateChecker.patch
 
 ## Extra Files
 # cp $ROOT/core/extra_files/per_game_config.h src/common

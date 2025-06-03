@@ -30,6 +30,8 @@ All patches and scripts in the `ext` directory are optional enhancements contain
   * Credit: Corte-Z
 - `androidArmOnly` - Removes the (usually) unneeded amd64 target for Android.
   * Credit: Corte-Z
+- `shaderETA` - Changes the shader/texture preload ETA to update every 500ms rather than instantly.
+  * Credit: Corte-Z
 
 ### Shell Scripts
 Shell scripts MUST be run after patches in order to prevent conflicts.

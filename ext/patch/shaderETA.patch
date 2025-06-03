@@ -1,0 +1,31 @@
+diff --git a/src/citra_qt/loading_screen.cpp b/src/citra_qt/loading_screen.cpp
+index ba2fdcaa6..a850e5696 100644
+--- a/src/citra_qt/loading_screen.cpp
++++ b/src/citra_qt/loading_screen.cpp
+@@ -185,7 +185,14 @@ void LoadingScreen::OnLoadProgress(VideoCore::LoadCallbackStage stage, std::size
+ 
+     // update labels and progress bar
+     ui->stage->setText(GetStageTranslation(stage, value, total));
+-    ui->value->setText(estimate);
++
++    // only update eta every 500ms
++    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - previous_eta_update).count();
++    if (duration >= 500) {
++        ui->value->setText(estimate);
++        previous_eta_update = now;
++    }
++
+     ui->progress_bar->setValue(static_cast<int>(value));
+     previous_time = now;
+ }
+diff --git a/src/citra_qt/loading_screen.h b/src/citra_qt/loading_screen.h
+index a6bfc7d09..2e694efaf 100644
+--- a/src/citra_qt/loading_screen.h
++++ b/src/citra_qt/loading_screen.h
+@@ -74,5 +74,6 @@ private:
+     static constexpr std::size_t NumberOfDataPoints = 25;
+     std::chrono::high_resolution_clock::time_point previous_time;
+     std::chrono::duration<double> rolling_average = {};
++    std::chrono::high_resolution_clock::time_point previous_eta_update;
+     bool eta_shown = false;
+ };
