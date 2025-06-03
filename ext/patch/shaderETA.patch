@@ -1,8 +1,18 @@
 diff --git a/src/citra_qt/loading_screen.cpp b/src/citra_qt/loading_screen.cpp
-index ba2fdcaa6..a850e5696 100644
+index ba2fdcaa6..5759bcddf 100644
 --- a/src/citra_qt/loading_screen.cpp
 +++ b/src/citra_qt/loading_screen.cpp
-@@ -185,7 +185,14 @@ void LoadingScreen::OnLoadProgress(VideoCore::LoadCallbackStage stage, std::size
+@@ -82,7 +82,8 @@ const static std::unordered_map<VideoCore::LoadCallbackStage, const char*> progr
+ 
+ LoadingScreen::LoadingScreen(QWidget* parent)
+     : QWidget(parent), ui(std::make_unique<Ui::LoadingScreen>()),
+-      previous_stage(VideoCore::LoadCallbackStage::Complete) {
++      previous_stage(VideoCore::LoadCallbackStage::Complete),
++    previous_eta_update{std::chrono::high_resolution_clock::now()} {
+     ui->setupUi(this);
+     setMinimumSize(400, 240);
+ 
+@@ -185,7 +186,14 @@ void LoadingScreen::OnLoadProgress(VideoCore::LoadCallbackStage stage, std::size
  
      // update labels and progress bar
      ui->stage->setText(GetStageTranslation(stage, value, total));
