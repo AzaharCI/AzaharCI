@@ -39,8 +39,8 @@ jobs:
       - name: Install vulkan-sdk (MSVC)
         if: ${{ matrix.target == 'msvc' }}
         run: |
-          wget https://sdk.lunarg.com/sdk/download/1.4.304.1/windows/vulkansdk-windows-X64-1.4.304.1.exe -O D:/a/_temp/vulkan.exe
-          D:/a/_temp/vulkan.exe --accept-licenses --default-answer --confirm-command install
+          wget https://sdk.lunarg.com/sdk/download/1.4.304.1/windows/vulkansdk-windows-X64-1.4.304.1.exe -O vulkan.exe
+          .\vulkan.exe --accept-licenses --default-answer --confirm-command install
 
       - name: Set up MSYS2
         if: ${{ matrix.target == 'msys2' }}
@@ -147,10 +147,10 @@ jobs:
             name: "Azahar AppImage (Optimized)"
             arch: x86_64-v3
 
-          # - runs-on: ubuntu-24.04-arm
-          #   optimized: false
-          #   name: "Azahar AppImage"
-          #   arch: aarch64
+          - runs-on: ubuntu-24.04-arm
+            optimized: false
+            name: "Azahar AppImage"
+            arch: aarch64
 
     container: ghcr.io/pkgforge-dev/archlinux:latest
     steps:
