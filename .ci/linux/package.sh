@@ -42,7 +42,7 @@ fi
 
 ln -sf ./org.azahar_emu.Azahar.svg ./.DirIcon
 
-UPINFO='gh-releases-zsync|Sneedplex|AzaharCI|latest|*.AppImage.zsync'
+UPINFO='gh-releases-zsync|AzaharCI|AzaharCI|latest|*.AppImage.zsync'
 
 LIBDIR="/usr/lib"
 

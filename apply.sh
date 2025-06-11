@@ -28,11 +28,15 @@ git apply $ROOT/core/patch/encryption.patch
 git apply $ROOT/core/patch/ticketFix.patch
 git apply $ROOT/core/patch/updateChecker.patch
 
+cd src
 ## Extra Files
 # cp $ROOT/core/extra_files/per_game_config.h src/common
 
+# needed for aarch64
+sed -i '/shader_setup.h/a#include <memory>' video_core/shader/shader_jit_a64_compiler.h
+
 # Android
-cd src/android/app/src/main
+cd android/app/src/main
 
 ## Extra Files
 cp $ROOT/core/extra_files/fragment_system_files.xml res/layout
