@@ -9,5 +9,6 @@ index 4efa27b57..ec31c42e0 100644
 -val abiFilter = listOf("arm64-v8a", "x86_64")
 +val abiFilter = listOf("arm64-v8a")
  
- val downloadedJniLibsPath = "${buildDir}/downloadedJniLibs"
+ val downloadedJniLibsPath = "${layout.buildDirectory.get().asFile.path}/downloadedJniLibs"
+ 
  
