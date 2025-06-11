@@ -11,6 +11,7 @@ export BUILDDIR="$2"
 
 LIB4BN="https://raw.githubusercontent.com/VHSgunzo/sharun/refs/heads/main/lib4bin"
 URUNTIME="https://github.com/VHSgunzo/uruntime/releases/latest/download/uruntime-appimage-dwarfs-$ARCH"
+SHARUN="https://github.com/VHSgunzo/sharun/releases/download/v0.6.9/sharun-$ARCH"
 
 if [ "$ARCH" = 'x86_64' ]; then
 	if [ "$1" = 'v3' ]; then
@@ -88,7 +89,7 @@ if [ "$ARCH" = 'aarch64' ]; then
 	echo 'SHARUN_ALLOW_SYS_VKICD=1' > ./.env
 fi
 
-wget https://github.com/VHSgunzo/sharun/releases/download/v0.6.3/sharun-x86_64 -O sharun
+wget $SHARUN -O sharun
 chmod a+x sharun
 
 if [ "$ARCH" = 'aarch64' ]; then # allow using host vk for aarch64 given the sad situation
