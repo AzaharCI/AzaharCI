@@ -52,6 +52,11 @@ then
 fi
 
 # Bundle all libs
+
+# temp workaround for arch being silly
+mkdir -p share/X11
+cp /usr/share/X11/xkb share/X11
+
 wget --retry-connrefused --tries=30 "$LIB4BN" -O ./lib4bin
 chmod +x ./lib4bin
 xvfb-run -a -- ./lib4bin -p -v -e -s -k \
