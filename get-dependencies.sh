@@ -87,9 +87,7 @@ pacman -Syu --noconfirm \
 	xcb-util-wm \
 	xorg-server-xvfb \
 	zip \
-	zsync \
-    patchelf \
-    strace
+	zsync
 
 if [ "$(uname -m)" = 'x86_64' ]; then
 	pacman -Syu --noconfirm vulkan-intel haskell-gnutls gcc13 svt-av1

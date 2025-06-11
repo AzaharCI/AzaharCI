@@ -9,7 +9,7 @@ export ARCH="$BASE_ARCH"
 
 export BUILDDIR="$2"
 
-LIB4BN="https://raw.githubusercontent.com/VHSgunzo/sharun/refs/heads/main/lib4bin"
+SHARUN="https://github.com/VHSgunzo/sharun/releases/latest/download/sharun-$ARCH-aio"
 URUNTIME="https://github.com/VHSgunzo/uruntime/releases/latest/download/uruntime-appimage-dwarfs-$ARCH"
 
 if [ "$ARCH" = 'x86_64' ]; then
@@ -57,9 +57,9 @@ fi
 mkdir -p share/X11
 cp -r /usr/share/X11/xkb share/X11
 
-wget --retry-connrefused --tries=30 "$LIB4BN" -O ./lib4bin
-chmod +x ./lib4bin
-xvfb-run -a -- ./lib4bin -p -v -e -s -k \
+wget --retry-connrefused --tries=30 "$SHARUN" -O ./sharun-aio
+chmod +x ./sharun-aio
+xvfb-run -a ./sharun-aio l -p -v -e -s -k \
 	../$BUILDDIR/bin/azahar* \
 	$LIBDIR/lib*GL*.so* \
 	$LIBDIR/dri/* \
@@ -82,6 +82,8 @@ xvfb-run -a -- ./lib4bin -p -v -e -s -k \
 	$LIBDIR/pipewire-0.3/* \
 	$LIBDIR/spa-0.2/*/* \
 	$LIBDIR/alsa-lib/*
+
+rm -f ./sharun-aio
 
 # Prepare sharun
 if [ "$ARCH" = 'aarch64' ]; then
