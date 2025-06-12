@@ -33,7 +33,9 @@ mkdir -p ./AppDir
 cd ./AppDir
 
 cp ../dist/azahar.svg ./org.azahar_emu.Azahar.svg
-cp ../../azahar.desktop ./org.azahar_emu.Azahar.desktop
+cp ../dist/azahar.desktop ./org.azahar_emu.Azahar.desktop
+
+UPINFO='gh-releases-zsync|AzaharCI|AzaharCI|latest|*.AppImage.zsync'
 
 if [ "$DEVEL" = 'true' ]; then
 	sed -i 's|Name=Azahar|Name=Azahar nightly|' ./org.azahar_emu.Azahar.desktop
@@ -42,11 +44,16 @@ fi
 
 ln -sf ./org.azahar_emu.Azahar.svg ./.DirIcon
 
-UPINFO='gh-releases-zsync|AzaharCI|AzaharCI|latest|*.AppImage.zsync'
-
 LIBDIR="/usr/lib"
 
-if [ ! -d "$LIBDIR/dri" ]
+# Workaround for Gentoo
+if [ ! -d "$LIBDIR/qt6"]
+then
+	LIBDIR="/usr/lib64"
+fi
+
+# Workaround for Debian
+if [ ! -d "$LIBDIR/qt6" ]
 then
     LIBDIR="/usr/lib/${BASE_ARCH}-linux-gnu"
 fi
@@ -86,13 +93,12 @@ xvfb-run -a ./sharun-aio l -p -v -e -s -k \
 rm -f ./sharun-aio
 
 # Prepare sharun
-if [ "$ARCH" = 'aarch64' ]; then
-	echo 'SHARUN_ALLOW_SYS_VKICD=1' > ./.env
-fi
-
 if [ "$ARCH" = 'aarch64' ]; then # allow using host vk for aarch64 given the sad situation
 	echo 'SHARUN_ALLOW_SYS_VKICD=1' >> ./.env
 fi
+
+# Workaround for Gentoo
+cp shared/libproxy/* lib/
 
 ln -f ./sharun ./AppRun
 ./sharun -g
