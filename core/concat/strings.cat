@@ -15,6 +15,6 @@
     <string name="home_menu_warning">System Files Warning</string>
     <string name="home_menu_warning_description">Due to how slow Android\'s storage access framework is for accessing Azahar\'s files, downloading multiple versions of system files can dramatically slow down loading for applications, save states, and the Applications list. Only download the files that you require to avoid any issues with loading speeds.</string>
     <string name="download_system_files">Download System Files</string>
-    <string name="system_files_description">Download system files to get Mii files, boot the HOME menu, and more</string>
-    <string name="system_files">System Files</string>
+    <string name="setup_system_files_description">Download system files to get Mii files, boot the HOME menu, and more</string>
+    <string name="setup_system_files">System Files</string>
 </resources>

@@ -17,7 +17,6 @@ fi
 # Main patches
 # TODO: meta.patch is broken on windows
 # git apply $ROOT/core/patch/meta.patch 
-git apply $ROOT/core/patch/homeSettings.patch
 git apply $ROOT/core/patch/oldFiles.patch
 git apply $ROOT/core/patch/configSystem.patch
 git apply $ROOT/core/patch/ticket.patch
@@ -46,6 +45,7 @@ cp -f $ROOT/core/extra_files/SystemFilesFragment.kt java/org/citra/citra_emu/fra
 sed -i '/} \/\/ extern/d' jni/native.cpp
 sed -i '/<\/resources>/d' res/values/arrays.xml
 sed -i '/<\/resources>/d' res/values/strings.xml
+sed -i '/setup_system_files/d' res/values*/strings.xml
 
 cat $ROOT/core/concat/native.cat >> jni/native.cpp
 cat $ROOT/core/concat/arrays.cat >> res/values/arrays.xml
