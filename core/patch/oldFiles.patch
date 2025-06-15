@@ -630,7 +630,7 @@ index 000000000..6c833f876
 +            android:layout_width="match_parent"
 +            android:layout_height="?attr/actionBarSize"
 +            app:navigationIcon="@drawable/ic_back"
-+            app:title="@string/system_files" />
++            app:title="@string/setup_system_files" />
 +
 +    </com.google.android.material.appbar.AppBarLayout>
 +
