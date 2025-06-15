@@ -2,12 +2,6 @@ diff --git a/src/android/app/src/main/java/org/citra/citra_emu/fragments/HomeSet
 index 432a06aa0d..e7ff2ba341 100644
 --- a/src/android/app/src/main/java/org/citra/citra_emu/fragments/HomeSettingsFragment.kt
 +++ b/src/android/app/src/main/java/org/citra/citra_emu/fragments/HomeSettingsFragment.kt
-@@ -1,4 +1,4 @@
--// Copyright Citra Emulator Project / Azahar Emulator Project
-+// Copyright 2023 Citra Emulator Project
- // Licensed under GPLv2 or any later version
- // Refer to the license.txt file included.
-
 @@ -121,14 +121,8 @@ class HomeSettingsFragment : Fragment() {
                  }
              ),

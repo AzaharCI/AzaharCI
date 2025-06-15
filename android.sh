@@ -1,4 +1,4 @@
-#!/bin/sh -x
+#!/bin/sh -ex
 cd azahar
 
 ../apply.sh

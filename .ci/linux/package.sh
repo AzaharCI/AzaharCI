@@ -98,7 +98,9 @@ if [ "$ARCH" = 'aarch64' ]; then # allow using host vk for aarch64 given the sad
 fi
 
 # Workaround for Gentoo
-cp shared/libproxy/* lib/
+if [ -d "shared/libproxy" ]; then
+	cp shared/libproxy/* lib/
+fi
 
 ln -f ./sharun ./AppRun
 ./sharun -g
