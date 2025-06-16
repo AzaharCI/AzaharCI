@@ -1,4 +1,5 @@
-azahar*
+azahar
+azahar-dev
 artifacts
 *.apk
 .vscode
