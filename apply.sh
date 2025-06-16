@@ -6,13 +6,8 @@ ROOT=$PWD/..
 
 git add .
 
-if [ "$DEVEL" = "true" ]
-then
-    git reset --hard origin/master
-else
-    git fetch --tags -f
-    git reset --hard $VERSION
-fi
+git fetch --tags -f
+git reset --hard $VERSION
 
 # Main patches
 # TODO: meta.patch is broken on windows
@@ -67,13 +62,24 @@ sed -i 's/listOf("3dsx", "elf", "axf", "cci", "cxi", "app")/listOf("3ds", "3dsx"
 
 # TODO: Make more patches portable between versions
 
-cd $ROOT/azahar/src
+if [ "$DEVEL" = 'true' ]; then
+    cd $ROOT/azahar-dev/src
+else
+    cd $ROOT/azahar/src
+fi
 
 # Extensions
-git apply $ROOT/ext/patch/turboAndPerGame.patch
+# TODO: Make dev-patches more easily manageable
+if [ "$DEVEL" != "true" ]
+then
+    git apply $ROOT/ext/patch/turboAndPerGame.patch
+    git apply $ROOT/ext/patch/azaharAppID.patch
+else
+    git apply $ROOT/ext/patch/dev/turboAndPerGame.patch
+    git apply $ROOT/ext/patch/dev/azaharAppID.patch
+fi
 # git apply $ROOT/ext/patch/multiplayer.patch
 git apply $ROOT/ext/patch/configHotkeys.patch
-git apply $ROOT/ext/patch/azaharAppID.patch
 git apply $ROOT/ext/patch/androidArmOnly.patch
 
 ## Extensions - Shell Scripts

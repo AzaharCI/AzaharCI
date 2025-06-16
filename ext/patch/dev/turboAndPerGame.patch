@@ -1,16 +1,18 @@
 diff --git a/src/citra_qt/citra_qt.cpp b/src/citra_qt/citra_qt.cpp
-index d51e7183e..70ed4b6d5 100644
+index d51e7183e..de8b2c84a 100644
 --- a/src/citra_qt/citra_qt.cpp
 +++ b/src/citra_qt/citra_qt.cpp
-@@ -809,22 +809,20 @@ void GMainWindow::InitializeHotkeys() {
+@@ -812,23 +812,21 @@ void GMainWindow::InitializeHotkeys() {
+             ToggleFullscreen();
          }
      });
-     connect_shortcut(QStringLiteral("Toggle Per-Application Speed"), [&] {
+-    connect_shortcut(QStringLiteral("Toggle Per-Application Speed"), [&] {
 -        if (!hotkey_registry
 -                 .GetKeySequence(QStringLiteral("Main Window"), QStringLiteral("Toggle Turbo Mode"))
 -                 .isEmpty()) {
 -            return;
 -        }
++    connect_shortcut(QStringLiteral("Toggle Per-Game Speed"), [&] {
          Settings::values.frame_limit.SetGlobal(!Settings::values.frame_limit.UsingGlobal());
 +        GMainWindow::SetTurboEnabled(false);
          UpdateStatusBar();

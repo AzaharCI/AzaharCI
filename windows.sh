@@ -1,5 +1,10 @@
 #!/bin/sh -ex
-cd azahar
+
+if [ "$DEVEL" = 'true' ]; then
+    cd azahar-dev
+else
+    cd azahar
+fi
 
 ../apply.sh
 

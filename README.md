@@ -18,8 +18,6 @@ All patches and scripts in the `ext` directory are optional enhancements contain
   * Credit: Corte-Z
 - `multiplayer` (EXPERIMENTAL) - Enables multiplayer features on Android. Known to cause issues right now.
   * Credit: Kleidis
-- `perGameDefaults` (EXPERIMENTAL) - Adds per-game defaults to games that need it (e.g. Luigi's Mansion Dark Moon). Currently incomplete.
-  * Credit: jbm11208, Corte-Z
 - `configHotkeys` - Adds hotkeys for Configure and Configure Current Game.
   * Credit: crueter, Corte-Z
 - `keepOldShortcuts` - Keeps old shortcuts in the Windows installer.
