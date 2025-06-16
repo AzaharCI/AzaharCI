@@ -7,8 +7,6 @@ set +e
 export APPIMAGE_EXTRACT_AND_RUN=1
 export BASE_ARCH="$(uname -m)"
 
-ARCH="$BASE_ARCH"
-
 export BUILDDIR="$2"
 
 SHARUN="https://github.com/VHSgunzo/sharun/releases/latest/download/sharun-${BASE_ARCH}-aio"
@@ -85,7 +83,7 @@ xvfb-run -a ./sharun-aio l -p -v -e -s -k \
 rm -f ./sharun-aio
 
 # Prepare sharun
-if [ "$ARCH" = 'aarch64' ]; then # allow using host vk for aarch64 given the sad situation
+if [ "$BASE_ARCH" = 'aarch64' ]; then # allow using host vk for aarch64 given the sad situation
 	echo 'SHARUN_ALLOW_SYS_VKICD=1' >> ./.env
 fi
 

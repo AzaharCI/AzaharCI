@@ -61,10 +61,7 @@ pacman -Syu --noconfirm \
 	nasm \
 	ninja \
 	nlohmann-json \
-	noto-fonts \
 	numactl \
-	nvidia \
-	nvidia-utils \
 	pipewire-audio \
 	pulseaudio \
 	pulseaudio-alsa \
@@ -74,7 +71,6 @@ pacman -Syu --noconfirm \
 	qt6-multimedia \
 	qt6-tools \
 	qt6-wayland \
-	plasma-meta \
 	rapidjson \
 	sdl2 \
 	spirv-headers \
@@ -82,7 +78,6 @@ pacman -Syu --noconfirm \
 	vulkan-headers \
 	vulkan-mesa-layers \
 	vulkan-nouveau \
-	vulkan-radeon \
 	wget \
 	x264 \
 	x265 \
@@ -94,7 +89,7 @@ pacman -Syu --noconfirm \
 	zsync
 
 if [ "$(uname -m)" = 'x86_64' ]; then
-	pacman -Syu --noconfirm vulkan-intel haskell-gnutls gcc14 svt-av1
+	pacman -Syu --noconfirm vulkan-intel haskell-gnutls gcc14 svt-av1 vulkan-radeon	nvidia nvidia-utils
 else
 	pacman -Syu --noconfirm vulkan-freedreno vulkan-panfrost
 fi
