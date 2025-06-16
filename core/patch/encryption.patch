@@ -143,7 +143,7 @@ index e25db1a43..4164ec98d 100644
 +    QProgressDialog progress(tr("Removing Azahar encryption..."), tr("Abort"), 0, (int) paths.size(), this);
 +    progress.setWindowModality(Qt::WindowModal);
 +
-+    for (int i = 0; i < paths.size(); i++) {
++    for (int i = 0; i < (int) paths.size(); i++) {
 +        progress.setValue(i);
 +
 +        if (progress.wasCanceled()) {
