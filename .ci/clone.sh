@@ -36,7 +36,7 @@ else
 fi
 
 echo $VERSION > ~/version
-export $VERSION
+export VERSION
 echo "VERSION=$VERSION" >> $GITHUB_ENV
 
 
