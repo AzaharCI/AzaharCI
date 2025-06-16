@@ -69,10 +69,6 @@ fi
 
 # Bundle all libs
 
-# temp workaround for arch being silly
-mkdir -p share/X11
-cp -r /usr/share/X11/xkb share/X11
-
 wget --retry-connrefused --tries=30 "$SHARUN" -O ./sharun-aio
 chmod +x ./sharun-aio
 xvfb-run -a ./sharun-aio l -p -v -e -s -k \
