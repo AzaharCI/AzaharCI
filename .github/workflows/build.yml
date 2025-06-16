@@ -76,10 +76,9 @@ jobs:
         run: DEVEL=${{ inputs.nightly }} ./windows.sh
 
       - name: Generate installer
-        if: ${{ inputs.nightly }} == false
         shell: cmd
         run: |
-          cd azahar\src\installer
+          cd azahar*\src\installer
           "C:\Program Files (x86)\NSIS\makensis.exe" /DPRODUCT_VARIANT=${{ matrix.target }} /DPRODUCT_VERSION=${{ env.VERSION }} citra.nsi
           mkdir ..\..\artifacts 2> NUL
           move /y *.exe ..\..\artifacts\
@@ -88,14 +87,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-${{ matrix.target }}-portable
-          path: azahar/build/bundle/
+          path: azahar*/build/bundle/
 
       - name: Upload (Installer)
-        if: ${{ inputs.nightly }} == false
         uses: actions/upload-artifact@v4
         with:
           name: windows-${{ matrix.target }}-installer
-          path: azahar/artifacts
+          path: azahar*/artifacts
 
   android:
     runs-on: ubuntu-latest
@@ -175,11 +173,10 @@ jobs:
         run: DEVEL=${{ inputs.nightly }} ./.ci/clone.sh
 
       - name: Build
-        if: ${{ matrix.optimized == false }}
         run: |
           DEVEL=${{ inputs.nightly }} ./linux.sh ${{ matrix.arch }}
           mkdir -p dist
-          mv azahar/*.AppImage* dist/
+          mv azahar*/*.AppImage* dist/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4.6.2
