@@ -123,10 +123,10 @@ index e25db1a43..4164ec98d 100644
  void GMainWindow::OnMenuInstallCIA() {
      QStringList filepaths = QFileDialog::getOpenFileNames(
          this, tr("Load Files"), UISettings::values.roms_path,
-@@ -2266,6 +2176,59 @@ void GMainWindow::OnMenuConnectArticBase() {
+@@ -2266,6 +2176,68 @@ void GMainWindow::OnMenuConnectArticBase() {
      }
  }
-
+ 
 +void GMainWindow::OnMenuRemoveAzaharEncryption()
 +{
 +    const std::vector<std::string> paths = HW::UniqueData::GetAppFilepaths();
@@ -140,10 +140,19 @@ index e25db1a43..4164ec98d 100644
 +
 +    std::map<int, int> results;
 +
++#ifdef _WIN32
 +    QProgressDialog progress(tr("Removing Azahar encryption..."), tr("Abort"), 0, (int) paths.size(), this);
++#else
++    QProgressDialog progress(tr("Removing Azahar encryption..."), tr("Abort"), 0, paths.size(), this);
++#endif
++
 +    progress.setWindowModality(Qt::WindowModal);
 +
-+    for (int i = 0; i < (int) paths.size(); i++) {
++#ifdef _WIN32
++    for (int i = 0; i < paths.size(); i++) {
++#else
++    for (size_t i = 0; i < paths.size(); i++) {
++#endif
 +        progress.setValue(i);
 +
 +        if (progress.wasCanceled()) {
