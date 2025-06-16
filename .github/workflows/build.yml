@@ -144,14 +144,28 @@ jobs:
 
           - runs-on: ubuntu-latest
             optimized: true
-            name: "Azahar AppImage (Optimized)"
+            name: "Azahar AppImage (v3)"
             arch: x86_64-v3
+            target: v3
+
+          - runs-on: ubuntu-latest
+            optimized: true
+            name: "Azahar AppImage (Steam Deck)"
+            arch: steam-deck
+            target: steamdeck
+
+          - runs-on: ubuntu-latest
+            optimized: true
+            name: "Azahar AppImage (v3)"
+            arch: rog-ally-x
+            target: allyx
 
           - runs-on: ubuntu-24.04-arm
             optimized: false
             name: "Azahar AppImage"
             arch: aarch64
 
+    name: "Azahar AppImage (${{ matrix.arch }})"
     container: ghcr.io/pkgforge-dev/archlinux:latest
     steps:
       - uses: actions/checkout@v4

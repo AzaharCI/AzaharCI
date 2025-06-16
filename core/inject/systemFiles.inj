@@ -1,0 +1,5 @@
+systemFiles/fragment_system_files.xml            android/app/src/main/res/layout
+systemFiles/fragment_system_files-w600dp.xml     android/app/src/main/res/layout-w600dp/fragment_system_files.xml
+systemFiles/SystemFilesFragment.kt               android/app/src/main/java/org/citra/citra_emu/fragments
+systemFiles/DownloadSystemFilesDialogFragment.kt android/app/src/main/java/org/citra/citra_emu/fragments
+systemFiles/SystemFilesViewModel.kt              android/app/src/main/java/org/citra/citra_emu/viewmodel

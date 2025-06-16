@@ -293,65 +293,6 @@ index ffbd11c4a..2f0d2f11b 100644
      // If data is being installing from CDN, provide a fake header to the container so that
      // it's not uninitialized.
      if (from_cdn) {
-@@ -439,24 +500,30 @@ CIAFile::CIAFile(Core::System& system_, Service::FS::MediaType media_type, bool
-     }
- }
-
--CIAFile::~CIAFile() {
-+CIAFile::~CIAFile()
-+{
-     Close();
- }
-
--ResultVal<std::size_t> CIAFile::Read(u64 offset, std::size_t length, u8* buffer) const {
-+ResultVal<std::size_t> CIAFile::Read(u64 offset, std::size_t length, u8* buffer) const
-+{
-     UNIMPLEMENTED();
-     return length;
- }
-
--Result CIAFile::WriteTicket() {
-+Result CIAFile::WriteTicket()
-+{
-     auto load_result = container.LoadTicket(data, container.GetTicketOffset());
-     if (load_result != Loader::ResultStatus::Success) {
-         LOG_ERROR(Service_AM, "Could not read ticket from CIA.");
-         // TODO: Correct result code.
--        return {ErrCodes::InvalidCIAHeader, ErrorModule::AM, ErrorSummary::InvalidArgument,
-+        return {ErrCodes::InvalidCIAHeader,
-+                ErrorModule::AM,
-+                ErrorSummary::InvalidArgument,
-                 ErrorLevel::Permanent};
-     }
-
-+#ifdef todotodo
-     const auto& ticket = container.GetTicket();
-     const auto ticket_path = GetTicketPath(ticket.GetTitleID(), ticket.GetTicketID());
-
-@@ -471,17 +538,21 @@ Result CIAFile::WriteTicket() {
-         // TODO: Correct result code.
-         return FileSys::ResultFileNotFound;
-     }
-+#endif
-
-     install_state = CIAInstallState::TicketLoaded;
-     return ResultSuccess;
- }
-
--Result CIAFile::WriteTitleMetadata(std::span<const u8> tmd_data, std::size_t offset) {
-+Result CIAFile::WriteTitleMetadata(std::span<const u8> tmd_data, std::size_t offset)
-+{
-     auto load_result = container.LoadTitleMetadata(tmd_data, offset);
-     if (load_result != Loader::ResultStatus::Success) {
-         LOG_ERROR(Service_AM, "Could not read title metadata.");
-         // TODO: Correct result code.
--        return {ErrCodes::InvalidCIAHeader, ErrorModule::AM, ErrorSummary::InvalidArgument,
-+        return {ErrCodes::InvalidCIAHeader,
-+                ErrorModule::AM,
-+                ErrorSummary::InvalidArgument,
-                 ErrorLevel::Permanent};
-     }
-
 @@ -512,11 +583,13 @@ Result CIAFile::WriteTitleMetadata(std::span<const u8> tmd_data, std::size_t off
      return PrepareToImportContent(tmd);
  }

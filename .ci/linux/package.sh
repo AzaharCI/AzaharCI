@@ -5,18 +5,11 @@ set -ex
 
 export APPIMAGE_EXTRACT_AND_RUN=1
 export BASE_ARCH="$(uname -m)"
-export ARCH="$BASE_ARCH"
 
 export BUILDDIR="$2"
 
-SHARUN="https://github.com/VHSgunzo/sharun/releases/latest/download/sharun-$ARCH-aio"
-URUNTIME="https://github.com/VHSgunzo/uruntime/releases/latest/download/uruntime-appimage-dwarfs-$ARCH"
-
-if [ "$ARCH" = 'x86_64' ]; then
-	if [ "$1" = 'v3' ]; then
-		ARCH="${ARCH}_v3"
-	fi
-fi
+SHARUN="https://github.com/VHSgunzo/sharun/releases/latest/download/sharun-${BASE_ARCH}-aio"
+URUNTIME="https://github.com/VHSgunzo/uruntime/releases/latest/download/uruntime-appimage-dwarfs-${BASE_ARCH}"
 
 if [ "$BUILDDIR" = '' ]
 then

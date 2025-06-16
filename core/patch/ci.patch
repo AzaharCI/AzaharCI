@@ -24,17 +24,6 @@ index 5b3521681..6cf7e03bc 100755
  cmake .. -G Ninja \
      -DCMAKE_BUILD_TYPE=Release \
      -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-@@ -32,10 +32,4 @@ strip -s bin/Release/*
- 
- if [ "$TARGET" = "appimage" ]; then
-     ninja bundle
--    # TODO: Our AppImage environment currently uses an older ccache version without the verbose flag.
--    ccache -s
--else
--    ccache -s -v
- fi
--
--ctest -VV -C Release
 diff --git a/CMakeModules/BundleTarget.cmake b/CMakeModules/BundleTarget.cmake
 index bd30faf91..6d00a0e42 100644
 --- a/CMakeModules/BundleTarget.cmake

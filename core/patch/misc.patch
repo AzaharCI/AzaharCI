@@ -54,22 +54,6 @@ index cac036aaa7..b41b1e2fd0 100644
      QStringLiteral("cci"),  QStringLiteral("cxi"), QStringLiteral("app")};
 
  void GameList::RefreshGameDirectory() {
-diff --git a/src/citra_qt/game_list_p.h b/src/citra_qt/game_list_p.h
-index 09dc5ab4ec..dd553a9635 100644
---- a/src/citra_qt/game_list_p.h
-+++ b/src/citra_qt/game_list_p.h
-@@ -184,9 +184,11 @@ class GameListItemPath : public GameListItem {
-             if (UISettings::values.game_list_icon_size.GetValue() !=
-                 UISettings::GameListIconSize::NoIcon)
-                 setData(GetDefaultIcon(large), Qt::DecorationRole);
-+/* todotodo
-             if (is_encrypted) {
-                 setData(QObject::tr("Unsupported encrypted application"), TitleRole);
-             }
-+*/
-             return;
-         }
-
 diff --git a/src/citra_qt/uisettings.h b/src/citra_qt/uisettings.h
 index 392954cf80..6fa7fbf1b1 100644
 --- a/src/citra_qt/uisettings.h

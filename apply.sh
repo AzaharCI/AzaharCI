@@ -17,19 +17,27 @@ fi
 # Main patches
 # TODO: meta.patch is broken on windows
 # git apply $ROOT/core/patch/meta.patch 
-git apply $ROOT/core/patch/oldFiles.patch
 git apply $ROOT/core/patch/configSystem.patch
 git apply $ROOT/core/patch/ticket.patch
-git apply $ROOT/core/patch/am.patch
+git apply $ROOT/core/patch/am.patch # TODO: Make this a file injection
 git apply $ROOT/core/patch/ci.patch
 git apply $ROOT/core/patch/misc.patch
-git apply $ROOT/core/patch/encryption.patch
-git apply $ROOT/core/patch/ticketFix.patch
+git apply $ROOT/core/patch/encryption.patch # TODO: This contains lots of unnecessary changes.
 git apply $ROOT/core/patch/updateChecker.patch
 
 cd src
-## Extra Files
-# cp $ROOT/core/extra_files/per_game_config.h src/common
+
+# Injections
+# FORMAT: srcFile destLoc
+# srcFile is relative to extra_files, destLoc is relative to src
+
+for file in $ROOT/core/inject/*
+do
+    ls $PWD/android/app
+    while read src dest; do
+        cp $ROOT/core/extra_files/$src $dest
+    done < $file
+done
 
 # needed for aarch64
 sed -i '/shader_setup.h/a#include <memory>' video_core/shader/shader_jit_a64_compiler.h
@@ -38,8 +46,6 @@ sed -i '/shader_setup.h/a#include <memory>' video_core/shader/shader_jit_a64_com
 cd android/app/src/main
 
 ## Extra Files
-cp $ROOT/core/extra_files/fragment_system_files.xml res/layout
-cp -f $ROOT/core/extra_files/SystemFilesFragment.kt java/org/citra/citra_emu/fragments
 
 ## Concat files (android)
 sed -i '/} \/\/ extern/d' jni/native.cpp
@@ -66,7 +72,6 @@ cd $ROOT/azahar/src
 # Extensions
 git apply $ROOT/ext/patch/turboAndPerGame.patch
 # git apply $ROOT/ext/patch/multiplayer.patch
-# git apply $ROOT/ext/patch/perGameDefaults.patch
 git apply $ROOT/ext/patch/configHotkeys.patch
 git apply $ROOT/ext/patch/azaharAppID.patch
 git apply $ROOT/ext/patch/androidArmOnly.patch

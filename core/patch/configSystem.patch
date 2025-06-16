@@ -2,35 +2,6 @@ diff --git a/src/citra_qt/configuration/configure_system.cpp b/src/citra_qt/conf
 index fb9f6d7bb..ef7d1262a 100644
 --- a/src/citra_qt/configuration/configure_system.cpp
 +++ b/src/citra_qt/configuration/configure_system.cpp
-@@ -1,15 +1,14 @@
--// Copyright Citra Emulator Project / Azahar Emulator Project
-+// Copyright 2016 Citra Emulator Project
- // Licensed under GPLv2 or any later version
- // Refer to the license.txt file included.
- 
--#include <cstring>
-+#include "citra_qt/configuration/configure_system.h"
- #include <QFileDialog>
- #include <QFutureWatcher>
- #include <QMessageBox>
- #include <QProgressDialog>
- #include <QtConcurrent/QtConcurrentMap>
- #include "citra_qt/configuration/configuration_shared.h"
--#include "citra_qt/configuration/configure_system.h"
- #include "common/file_util.h"
- #include "common/settings.h"
- #include "core/core.h"
-@@ -17,9 +16,9 @@
- #include "core/hle/service/cfg/cfg.h"
- #include "core/hle/service/ptm/ptm.h"
- #include "core/hw/aes/key.h"
--#include "core/hw/unique_data.h"
- #include "core/system_titles.h"
- #include "ui_configure_system.h"
-+#include <cstring>
- 
- static const std::array<int, 12> days_in_month = {{
-     31,
 @@ -227,60 +226,62 @@ static const std::array<const char*, 187> country_names = {
  };
  
