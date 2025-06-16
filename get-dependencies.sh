@@ -61,6 +61,7 @@ pacman -Syu --noconfirm \
 	nasm \
 	ninja \
 	nlohmann-json \
+	noto-fonts \
 	numactl \
 	pipewire-audio \
 	pulseaudio \
@@ -71,6 +72,7 @@ pacman -Syu --noconfirm \
 	qt6-multimedia \
 	qt6-tools \
 	qt6-wayland \
+	plasma-meta \
 	rapidjson \
 	sdl2 \
 	spirv-headers \
