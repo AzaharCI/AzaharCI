@@ -189,7 +189,7 @@ jobs:
       - name: Compile Azahar (Optimized)
         if: ${{ matrix.optimized == true }}
         run: |
-          DEVEL=${{ inputs.nightly }} ./linux.sh v3
+          DEVEL=${{ inputs.nightly }} ./linux.sh ${{ matrix.target }}
           mkdir -p dist
           mv azahar/*.AppImage* dist/
 

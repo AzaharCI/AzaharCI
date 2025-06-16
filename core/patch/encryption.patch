@@ -149,7 +149,7 @@ index e25db1a43..4164ec98d 100644
 +    progress.setWindowModality(Qt::WindowModal);
 +
 +#ifdef _WIN32
-+    for (int i = 0; i < paths.size(); i++) {
++    for (unsigned int i = 0; i < paths.size(); i++) {
 +#else
 +    for (size_t i = 0; i < paths.size(); i++) {
 +#endif

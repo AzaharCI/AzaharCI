@@ -63,6 +63,8 @@ pacman -Syu --noconfirm \
 	nlohmann-json \
 	noto-fonts \
 	numactl \
+	nvidia \
+	nvidia-utils \
 	pipewire-audio \
 	pulseaudio \
 	pulseaudio-alsa \
