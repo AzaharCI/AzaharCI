@@ -165,7 +165,7 @@ jobs:
             name: "Azahar AppImage"
             arch: aarch64
 
-    name: "Azahar AppImage (${{ matrix.arch }})"
+    name: Azahar AppImage (${{ matrix.arch }})
     container: ghcr.io/pkgforge-dev/archlinux:latest
     steps:
       - uses: actions/checkout@v4
