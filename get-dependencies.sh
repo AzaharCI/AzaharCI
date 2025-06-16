@@ -86,7 +86,6 @@ pacman -Syu --noconfirm \
 	wget \
 	x264 \
 	x265 \
-	xcb-util-cursor \
 	xcb-util-image \
 	xcb-util-renderutil \
 	xcb-util-wm \

@@ -139,22 +139,19 @@ jobs:
         include:
           - runs-on: ubuntu-latest
             optimized: false
-            arch: x86_64
+            arch: amd64-legacy
 
           - runs-on: ubuntu-latest
             optimized: true
-            arch: x86_64-v3
-            target: v3
+            arch: amd64
 
           - runs-on: ubuntu-latest
             optimized: true
-            arch: steam-deck
-            target: steamdeck
+            arch: steamdeck
 
           - runs-on: ubuntu-latest
             optimized: true
-            arch: rog-ally-x
-            target: allyx
+            arch: rog-ally
 
           - runs-on: ubuntu-24.04-arm
             optimized: false
@@ -189,7 +186,7 @@ jobs:
       - name: Compile Azahar (Optimized)
         if: ${{ matrix.optimized == true }}
         run: |
-          DEVEL=${{ inputs.nightly }} ./linux.sh ${{ matrix.target }}
+          DEVEL=${{ inputs.nightly }} ./linux.sh ${{ matrix.arch }}
           mkdir -p dist
           mv azahar/*.AppImage* dist/
 

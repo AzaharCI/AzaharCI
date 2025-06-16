@@ -8,20 +8,6 @@ export BASE_ARCH="$(uname -m)"
 
 ARCH="$BASE_ARCH"
 
-if [ "$ARCH" = 'x86_64' ]; then
-	if [ "$1" = 'v3' ]; then
-		ARCH="${ARCH}_v3"
- 	elif [ "$1" = 'steamdeck' ]; then
-    	ARCH="steamdeck"
-  	elif [ "$1" = 'allyx' ]; then
-    	ARCH="rog-ally-x"
-  # TODO(cortex): Add a znver5 target for that new Xbox handheld
-	fi
-else
-	echo "Making aarch64 build of azahar"
-	ARCH_FLAGS="-march=armv8-a -mtune=generic -O3"
-fi
-
 export BUILDDIR="$2"
 
 SHARUN="https://github.com/VHSgunzo/sharun/releases/latest/download/sharun-${BASE_ARCH}-aio"
