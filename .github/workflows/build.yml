@@ -174,15 +174,8 @@ jobs:
       - name: Clone & Grab Version
         run: DEVEL=${{ inputs.nightly }} ./.ci/clone.sh
 
-      - name: Compile Azahar (Normal)
+      - name: Build
         if: ${{ matrix.optimized == false }}
-        run: |
-          DEVEL=${{ inputs.nightly }} ./linux.sh
-          mkdir -p dist
-          mv azahar/*.AppImage* dist/
-
-      - name: Compile Azahar (Optimized)
-        if: ${{ matrix.optimized == true }}
         run: |
           DEVEL=${{ inputs.nightly }} ./linux.sh ${{ matrix.arch }}
           mkdir -p dist
