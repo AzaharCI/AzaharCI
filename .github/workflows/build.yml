@@ -14,6 +14,7 @@ jobs:
     strategy:
       matrix:
         target: ["msvc", "msys2"]
+    name: "Windows (${{ matrix.target }})"
     defaults:
       run:
         shell: ${{ (matrix.target == 'msys2' && 'msys2') || 'bash' }} {0}
@@ -76,6 +77,7 @@ jobs:
         run: DEVEL=${{ inputs.nightly }} ./windows.sh
 
       - name: Generate installer
+        if: inputs.nightly == false
         shell: cmd
         run: |
           cd azahar*\src\installer
@@ -94,6 +96,7 @@ jobs:
           path: bundle
 
       - name: Upload (Installer)
+        if: inputs.nightly == false
         uses: actions/upload-artifact@v4
         with:
           name: windows-${{ matrix.target }}-installer
@@ -101,6 +104,7 @@ jobs:
 
   android:
     runs-on: ubuntu-latest
+    name: "Android"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -133,7 +137,7 @@ jobs:
           path: artifacts
 
   appimage:
-    name: "Azahar AppImage (${{ matrix.arch }})"
+    name: "Linux (${{ matrix.arch }})"
     runs-on: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
@@ -188,8 +192,9 @@ jobs:
           name: linux-${{ matrix.arch }}
           path: "dist"
 
+      # Only upload one
       - name: Upload version file
-        if: ${{ inputs.nightly }} == true
+        if: matrix.arch == amd64
         uses: actions/upload-artifact@v4.6.2
         with:
           name: version

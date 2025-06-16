@@ -26,7 +26,6 @@ pacman -Syu --noconfirm \
 	boost-libs \
 	catch2 \
     ccache \
-	clang \
 	cmake \
 	curl \
 	dav1d \
