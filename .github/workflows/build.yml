@@ -80,20 +80,24 @@ jobs:
         run: |
           cd azahar*\src\installer
           "C:\Program Files (x86)\NSIS\makensis.exe" /DPRODUCT_VARIANT=${{ matrix.target }} /DPRODUCT_VERSION=${{ env.VERSION }} citra.nsi
-          mkdir ..\..\artifacts 2> NUL
-          move /y *.exe ..\..\artifacts\
+          mkdir ..\..\..\artifacts 2> NUL
+          move /y *.exe ..\..\..\artifacts\
+
+      - name: Pack (Portable)
+        run: |
+          mv azahar*/build/bundle .
 
       - name: Upload (Portable)
         uses: actions/upload-artifact@v4
         with:
           name: windows-${{ matrix.target }}-portable
-          path: azahar*/build/bundle/
+          path: bundle
 
       - name: Upload (Installer)
         uses: actions/upload-artifact@v4
         with:
           name: windows-${{ matrix.target }}-installer
-          path: azahar*/artifacts
+          path: artifacts
 
   android:
     runs-on: ubuntu-latest
