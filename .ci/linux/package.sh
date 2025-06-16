@@ -1,7 +1,8 @@
 #!/bin/sh
 
 # This script assumes you're in the source directory
-set -ex
+set -x
+set +e
 
 export APPIMAGE_EXTRACT_AND_RUN=1
 export BASE_ARCH="$(uname -m)"

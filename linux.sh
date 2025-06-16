@@ -17,7 +17,7 @@ case "$1" in
     rog-ally)
         echo "Making ROG Ally X (Zen 4) optimized build of azahar"
         ARCH="rog-ally-x"
-        ARCH_FLAGS="-march=znver2 -mtune=znver4" # TODO(cortex): Appears to be a limitation of the actions runner
+        ARCH_FLAGS="-march=znver3 -mtune=znver4" # TODO(cortex): Runner is on a Zen3 CPU
         ;;
     amd64-legacy)
         echo "Making x86-64 generic build of azahar"
@@ -29,12 +29,11 @@ case "$1" in
         ARCH=aarch64
         ARCH_FLAGS="-march=armv8-a -mtune=generic"
         ;;
-    # TODO(cortex): Test this
-    # armv9)
-    #     echo "Making armv9-a build of azahar"
-    #     ARCH=armv9
-    #     ARCH_FLAGS="-march=armv9-a -mtune=generic"
-    #     ;;
+    armv9)
+        echo "Making armv9-a build of azahar"
+        ARCH=armv9
+        ARCH_FLAGS="-march=armv9-a -mtune=generic"
+        ;;
 esac
 
 export ARCH

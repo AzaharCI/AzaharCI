@@ -138,24 +138,22 @@ jobs:
       matrix:
         include:
           - runs-on: ubuntu-latest
-            optimized: false
             arch: amd64-legacy
 
           - runs-on: ubuntu-latest
-            optimized: true
             arch: amd64
 
           - runs-on: ubuntu-latest
-            optimized: true
             arch: steamdeck
 
           - runs-on: ubuntu-latest
-            optimized: true
             arch: rog-ally
 
           - runs-on: ubuntu-24.04-arm
-            optimized: false
             arch: aarch64
+
+          - runs-on: ubuntu-24.04-arm
+            arch: armv9
 
     container: ghcr.io/pkgforge-dev/archlinux:latest
     steps:
@@ -193,7 +191,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4.6.2
         with:
-          name: linux-${{ matrix.optimized && 'optimized' || 'normal' }}-${{ matrix.arch }}
+          name: linux-${{ matrix.arch }}
           path: "dist"
 
       - name: Upload version file
