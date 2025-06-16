@@ -40,7 +40,7 @@ ln -sf ./org.azahar_emu.Azahar.svg ./.DirIcon
 LIBDIR="/usr/lib"
 
 # Workaround for Gentoo
-if [ ! -d "$LIBDIR/qt6"]
+if [ ! -d "$LIBDIR/qt6" ]
 then
 	LIBDIR="/usr/lib64"
 fi
@@ -117,8 +117,3 @@ echo "Generating AppImage..."
 echo "Generating zsync file..."
 zsyncmake *.AppImage -u *.AppImage
 echo "All Done!"
-
-# Cleanup
-
-#rm -rf AppDir
-#rm uruntime

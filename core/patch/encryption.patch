@@ -140,10 +140,10 @@ index e25db1a43..4164ec98d 100644
 +
 +    std::map<int, int> results;
 +
-+    QProgressDialog progress(tr("Removing Azahar encryption..."), tr("Abort"), 0, paths.size(), this);
++    QProgressDialog progress(tr("Removing Azahar encryption..."), tr("Abort"), 0, (int) paths.size(), this);
 +    progress.setWindowModality(Qt::WindowModal);
 +
-+    for (size_t i = 0; i < paths.size(); i++) {
++    for (int i = 0; i < paths.size(); i++) {
 +        progress.setValue(i);
 +
 +        if (progress.wasCanceled()) {
@@ -155,7 +155,7 @@ index e25db1a43..4164ec98d 100644
 +
 +    game_list->SetDirectoryWatcherEnabled(true);
 +
-+    progress.setValue(paths.size());
++    progress.setValue((int) paths.size());
 +
 +    QMessageBox::information(this,
 +                             tr("Azahar"),
