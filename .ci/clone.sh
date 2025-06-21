@@ -15,7 +15,9 @@ if [ "$DEVEL" = 'true' ]; then
 	VERSION="$(git ls-remote "$REPO" HEAD | cut -c 1-9)"
 else
 	echo "Making stable build of azahar..."
-	wget "$GRON" -O ./gron.awk
+    if [ ! -f gron.awk ]; then
+        wget "$GRON" -O ./gron.awk
+    fi
 	chmod +x ./gron.awk
 	VERSION=$(wget https://api.github.com/repos/azahar-emu/azahar/tags -O - \
 		| ./gron.awk | awk -F'=|"' '/name/ {print $3; exit}')
